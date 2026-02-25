@@ -1,0 +1,34 @@
+graphhopper:
+  datareader.file: ""
+  graph.location: graph-cache
+
+  profiles:
+    - name: car
+      custom_model_files: [car.json]
+
+  profiles_ch:
+    - profile: car
+
+  profiles_lm: []
+
+  graph.encoded_values: car_access, car_average_speed, road_access
+
+  prepare.min_network_size: 200
+  prepare.subnetworks.threads: 1
+
+  routing.snap_preventions_default: tunnel, bridge, ferry
+  routing.non_ch.max_waypoint_distance: 1000000
+
+  import.osm.ignored_highways: footway,construction,cycleway,path,steps
+
+  graph.dataaccess.default_type: RAM_STORE
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: localhost
+
+logging:
+  appenders:
+    - type: console

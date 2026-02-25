@@ -1,0 +1,49 @@
+# ---- Go: build/test artifacts ----
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.coverprofile
+coverage.out
+coverage/
+bin/
+dist/
+
+# Local Go tool caches (only if created inside repo)
+.gocache/
+.gomodcache/
+
+# ---- Editors / OS ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# ---- GraphHopper-style runtime artifacts ----
+graph-cache/
+logs/
+*.log
+
+# Optional local runtime config overrides
+config.yml
+local/
+
+# Import/elevation data artifacts
+*.osm
+*.pbf
+*.dem
+srtmprovider/
+cgiarprovider/
+
+# Keep fixture datasets when intentionally added under testdata
+!testdata/**/*.pbf
+!testdata/**/*.osm
+
+# Frontend/node artifacts (for future web modules)
+**/node_modules/
+web/node/
+web-bundle/node/

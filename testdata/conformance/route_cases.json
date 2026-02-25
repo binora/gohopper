@@ -1,0 +1,12 @@
+[
+  {
+    "name": "simple-route",
+    "method": "GET",
+    "path": "/route?point=52.5300591,13.3565022&point=52.5060440,13.4378107&profile=car"
+  },
+  {
+    "name": "invalid-heading-count",
+    "method": "GET",
+    "path": "/route?point=52.5300591,13.3565022&point=52.5060440,13.4378107&heading=10&heading=20&heading=30"
+  }
+]
