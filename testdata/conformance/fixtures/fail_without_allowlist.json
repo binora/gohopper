@@ -1,0 +1,26 @@
+{
+  "name": "fail_without_allowlist",
+  "allowlist": {
+    "json_paths": [],
+    "header_keys": []
+  },
+  "gh": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "paths": [{"distance": 1000, "time": 60000}]
+    }
+  },
+  "go": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "paths": [{"distance": 1001, "time": 60000}]
+    }
+  },
+  "expect_equal": false
+}

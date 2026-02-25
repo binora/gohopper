@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run Unit and Integration Tests
+        run: go test ./...
+
+      - name: Verify Conformance Harness Empty Baseline
+        run: |
+          go run ./cmd/gohopper conformance \
+            --cases testdata/conformance/empty_cases.json \
+            --allowlist testdata/conformance/allowlist.json \
+            --gh-url http://127.0.0.1:1 \
+            --go-url http://127.0.0.1:1 \
+            --report-out /tmp/conformance-empty-report.json
+          test -f /tmp/conformance-empty-report.json
+          cat /tmp/conformance-empty-report.json

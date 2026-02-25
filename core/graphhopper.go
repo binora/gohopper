@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ type GraphHopper struct {
 	ghLocation     string
 	fullyLoaded    bool
 	properties     map[string]string
+	initErr        error
 }
 
 func NewGraphHopper() *GraphHopper {
@@ -44,10 +46,14 @@ func (g *GraphHopper) Init(cfg GraphHopperConfig) *GraphHopper {
 	for _, p := range cfg.GetProfiles() {
 		g.profilesByName[p.Name] = p
 	}
+	g.initErr = validateProfileConfig(cfg)
 	return g
 }
 
 func (g *GraphHopper) ImportOrLoad() error {
+	if g.initErr != nil {
+		return g.initErr
+	}
 	if g.ghLocation == "" {
 		g.ghLocation = "graph-cache"
 	}
@@ -102,4 +108,57 @@ func (g *GraphHopper) GetProperties() map[string]string {
 
 func (g *GraphHopper) SetBounds(points []util.GHPoint) {
 	g.graph.SetBounds(points)
+}
+
+func validateProfileConfig(cfg GraphHopperConfig) error {
+	seenProfiles := map[string]struct{}{}
+	for _, p := range cfg.GetProfiles() {
+		if p.Name == "" {
+			return errors.New("Profile name cannot be empty")
+		}
+		if _, ok := seenProfiles[p.Name]; ok {
+			return fmt.Errorf("Profile names must be unique. Duplicate name: '%s'", p.Name)
+		}
+		seenProfiles[p.Name] = struct{}{}
+	}
+
+	seenCH := map[string]struct{}{}
+	for _, p := range cfg.GetCHProfiles() {
+		if _, ok := seenProfiles[p.Profile]; !ok {
+			return fmt.Errorf("CH profile references unknown profile '%s'", p.Profile)
+		}
+		if _, ok := seenCH[p.Profile]; ok {
+			return fmt.Errorf("Duplicate CH reference to profile '%s'", p.Profile)
+		}
+		seenCH[p.Profile] = struct{}{}
+	}
+
+	lmByProfile := map[string]config.LMProfile{}
+	for _, p := range cfg.GetLMProfiles() {
+		if _, ok := seenProfiles[p.Profile]; !ok {
+			return fmt.Errorf("LM profile references unknown profile '%s'", p.Profile)
+		}
+		if _, ok := lmByProfile[p.Profile]; ok {
+			return fmt.Errorf("Multiple LM profiles are using the same profile '%s'", p.Profile)
+		}
+		lmByProfile[p.Profile] = p
+	}
+
+	for _, p := range cfg.GetLMProfiles() {
+		if p.PreparationProfile == "" {
+			continue
+		}
+		if _, ok := seenProfiles[p.PreparationProfile]; !ok {
+			return fmt.Errorf("LM profile references unknown preparation profile '%s'", p.PreparationProfile)
+		}
+		prepProfile, ok := lmByProfile[p.PreparationProfile]
+		if !ok {
+			return fmt.Errorf("Unknown LM preparation profile '%s' in LM profile '%s' cannot be used as preparation_profile", p.PreparationProfile, p.Profile)
+		}
+		if prepProfile.PreparationProfile != "" {
+			return fmt.Errorf("Cannot use '%s' as preparation_profile for LM profile '%s', because it uses another profile for preparation itself.", p.PreparationProfile, p.Profile)
+		}
+	}
+
+	return nil
 }

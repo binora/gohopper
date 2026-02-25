@@ -38,6 +38,15 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	content := string(data)
+	hasGraphHopper := hasTopLevelSection(content, "graphhopper")
+	hasServer := hasTopLevelSection(content, "server")
+	hasLogging := hasTopLevelSection(content, "logging")
+	if !hasGraphHopper && !hasServer && !hasLogging {
+		// GraphHopperConfig-style YAML can be root-level; wrap it so it can be parsed by our runtime loader.
+		content = wrapGraphHopperRoot(content)
+	}
+
 	cfg := NewGraphHopperConfig()
 	server := map[string]any{"application_connectors": []any{map[string]any{"port": 8989}}}
 	logging := map[string]any{}
@@ -46,14 +55,15 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 	listMode := ""
 	currentProfile := -1
 
-	for _, rawLine := range strings.Split(string(data), "\n") {
+	for _, rawLine := range strings.Split(content, "\n") {
 		line := stripComments(rawLine)
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		trimmed := strings.TrimSpace(line)
+		indent := leadingSpaces(rawLine)
 
-		if !strings.HasPrefix(rawLine, " ") && strings.HasSuffix(trimmed, ":") {
+		if indent == 0 && strings.HasSuffix(trimmed, ":") {
 			section = strings.TrimSuffix(trimmed, ":")
 			listMode = ""
 			currentProfile = -1
@@ -62,11 +72,15 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 
 		switch section {
 		case "graphhopper":
-			if strings.HasSuffix(trimmed, ":") {
+			if indent == 2 && strings.HasSuffix(trimmed, ":") {
 				key := strings.TrimSuffix(trimmed, ":")
 				switch key {
 				case "profiles", "profiles_ch", "profiles_lm", "copyrights":
 					listMode = key
+					currentProfile = -1
+				default:
+					// Nested maps are ignored for now, consistent with GraphHopperConfig behavior in this scaffold.
+					listMode = ""
 					currentProfile = -1
 				}
 				continue
@@ -96,7 +110,7 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 				continue
 			}
 
-			if listMode == "profiles" && currentProfile >= 0 {
+			if listMode == "profiles" && currentProfile >= 0 && indent > 2 {
 				if key, value, ok := splitKeyValue(trimmed); ok {
 					switch key {
 					case "custom_model_files":
@@ -109,8 +123,10 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 				}
 			}
 
-			if key, value, ok := splitKeyValue(trimmed); ok {
-				cfg.properties[key] = parseScalar(value)
+			if indent == 2 {
+				if key, value, ok := splitKeyValue(trimmed); ok {
+					cfg.properties[key] = parseScalar(value)
+				}
 			}
 		case "server":
 			if key, value, ok := splitKeyValue(trimmed); ok && key == "port" {
@@ -132,6 +148,46 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 	}
 
 	return &RuntimeConfig{GraphHopper: cfg, Server: server, Logging: logging}, nil
+}
+
+func hasTopLevelSection(content, key string) bool {
+	want := key + ":"
+	for _, rawLine := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(stripComments(rawLine))
+		if trimmed == "" {
+			continue
+		}
+		if leadingSpaces(rawLine) == 0 && trimmed == want {
+			return true
+		}
+	}
+	return false
+}
+
+func wrapGraphHopperRoot(content string) string {
+	var b strings.Builder
+	b.WriteString("graphhopper:\n")
+	for _, line := range strings.Split(content, "\n") {
+		if line == "" {
+			b.WriteString("\n")
+			continue
+		}
+		b.WriteString("  ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func leadingSpaces(s string) int {
+	count := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] != ' ' {
+			break
+		}
+		count++
+	}
+	return count
 }
 
 func stripComments(line string) string {
