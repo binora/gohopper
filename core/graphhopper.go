@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"gohopper/core/config"
@@ -14,6 +15,8 @@ import (
 	"gohopper/core/util"
 	webapi "gohopper/web-api"
 )
+
+var validProfileName = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 type GraphHopper struct {
 	profilesByName map[string]config.Profile
@@ -115,6 +118,12 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 	for _, p := range cfg.GetProfiles() {
 		if p.Name == "" {
 			return errors.New("Profile name cannot be empty")
+		}
+		if !validProfileName.MatchString(p.Name) {
+			return fmt.Errorf("Profile names may only contain lower case letters, numbers and underscores, given: %s", p.Name)
+		}
+		if p.Weighting != "" && p.Weighting != "custom" {
+			return fmt.Errorf("Could not create weighting for profile: '%s': Weighting '%s' not supported", p.Name, p.Weighting)
 		}
 		if _, ok := seenProfiles[p.Name]; ok {
 			return fmt.Errorf("Profile names must be unique. Duplicate name: '%s'", p.Name)

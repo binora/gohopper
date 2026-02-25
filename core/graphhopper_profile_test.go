@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -12,6 +13,28 @@ func TestDuplicateProfileNameError(t *testing.T) {
 	cfg.SetProfiles([]config.Profile{{Name: "my_profile"}, {Name: "your_profile"}, {Name: "my_profile"}})
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "Profile names must be unique. Duplicate name: 'my_profile'")
+}
+
+func TestProfileDeserialize(t *testing.T) {
+	jsonInput := `{"name":"my_car","weighting":"custom","turn_costs":{"vehicle_types":["motorcar"]},"foo":"bar","baz":"buzz"}`
+
+	var profile config.Profile
+	if err := json.Unmarshal([]byte(jsonInput), &profile); err != nil {
+		t.Fatalf("unmarshal profile: %v", err)
+	}
+	if profile.Name != "my_car" {
+		t.Fatalf("unexpected profile name: %q", profile.Name)
+	}
+	if profile.Weighting != "custom" {
+		t.Fatalf("unexpected weighting: %q", profile.Weighting)
+	}
+	vehicleTypes, ok := profile.TurnCosts["vehicle_types"].([]interface{})
+	if !ok || len(vehicleTypes) != 1 || vehicleTypes[0] != "motorcar" {
+		t.Fatalf("unexpected turn_costs.vehicle_types: %+v", profile.TurnCosts["vehicle_types"])
+	}
+	if len(profile.Hints) != 2 || profile.Hints["foo"] != "bar" || profile.Hints["baz"] != "buzz" {
+		t.Fatalf("unexpected profile hints: %+v", profile.Hints)
+	}
 }
 
 func TestCHProfileDoesNotExistError(t *testing.T) {
@@ -28,6 +51,21 @@ func TestDuplicateCHProfileError(t *testing.T) {
 	cfg.SetCHProfiles([]config.CHProfile{{Profile: "profile"}, {Profile: "profile"}})
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "Duplicate CH reference to profile 'profile'")
+}
+
+func TestInvalidProfileNameError(t *testing.T) {
+	cfg := NewGraphHopperConfig()
+	cfg.SetProfiles([]config.Profile{{Name: "BadProfile"}})
+	err := NewGraphHopper().Init(cfg).ImportOrLoad()
+	assertErrContains(t, err, "Profile names may only contain lower case letters, numbers and underscores, given: BadProfile")
+}
+
+func TestUnknownWeightingError(t *testing.T) {
+	cfg := NewGraphHopperConfig()
+	cfg.SetProfiles([]config.Profile{{Name: "profile", Weighting: "your_weighting"}})
+	err := NewGraphHopper().Init(cfg).ImportOrLoad()
+	assertErrContains(t, err, "Could not create weighting for profile: 'profile'")
+	assertErrContains(t, err, "Weighting 'your_weighting' not supported")
 }
 
 func TestLMProfileDoesNotExistError(t *testing.T) {

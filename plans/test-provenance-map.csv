@@ -6,7 +6,7 @@ web-api/src/test/java/com/graphhopper/util/GHRequestTest.java,web-api/gh_request
 web-api/src/test/java/com/graphhopper/util/GHResponseTest.java,web-api/gh_response_test.go,planned,M15,Not yet implemented
 web-api/src/test/java/com/graphhopper/jackson/RouteResourceRepresentationTest.java,web-api/representation_test.go,planned,M15,Not yet implemented
 core/src/test/java/com/graphhopper/GraphHopperTest.java,core/graphhopper_test.go,planned,M14,End-to-end graphhopper behavior tests
-core/src/test/java/com/graphhopper/GraphHopperProfileTest.java,core/graphhopper_profile_test.go,planned,M1,Profile config semantics
+core/src/test/java/com/graphhopper/GraphHopperProfileTest.java,core/graphhopper_profile_test.go,completed,M1,Mirrors deserialize + profile/ch/lm validation error semantics
 core/src/test/java/com/graphhopper/storage/BaseGraphTest.java,core/storage/base_graph_test.go,planned,M3,Read compatibility and graph invariants
 core/src/test/java/com/graphhopper/storage/StorablePropertiesTest.java,core/storage/storable_properties_test.go,planned,M3,Properties read compatibility
 core/src/test/java/com/graphhopper/storage/CHStorageTest.java,core/storage/ch_storage_test.go,planned,M4,CH write/read storage compatibility
@@ -25,6 +25,7 @@ core/src/test/java/com/graphhopper/routing/lm/PrepareLandmarksTest.java,core/rou
 core/src/test/java/com/graphhopper/routing/lm/LMApproximatorTest.java,core/routing/lm/lm_approximator_test.go,planned,M12,LM query behavior
 core/src/test/java/com/graphhopper/routing/weighting/WeightingTest.java,core/routing/weighting/weighting_test.go,planned,M13,Weighting parity
 web-api/src/test/java/com/graphhopper/util/CustomModelTest.java,core/routing/weighting/custom/custom_model_parser_test.go,planned,M13,Custom model DSL parity
+web-bundle/src/test/java/com/graphhopper/jackson/GraphHopperConfigModuleTest.java,core/graphhopper_config_test.go,completed,M1,Root-level GraphHopperConfig YAML behavior mirrored
 web-bundle/src/test/java/com/graphhopper/gpx/GpxConversionsTest.java,web-bundle/resources/route_resource_gpx_test.go,planned,M16,GPX output parity
 web-bundle/src/test/java/com/graphhopper/resources/RouteResourceTest.java,web-bundle/resources/route_resource_test.go,planned,M16,Route resource parity (create GH-equivalent suite)
 web-bundle/src/test/java/com/graphhopper/resources/NearestResourceTest.java,web-bundle/resources/nearest_resource_test.go,planned,M17,Nearest endpoint parity (create GH-equivalent suite)

@@ -3,10 +3,10 @@ package core
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"gohopper/core/config"
+	"gopkg.in/yaml.v3"
 )
 
 type GraphHopperConfig struct {
@@ -38,108 +38,24 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	content := string(data)
-	hasGraphHopper := hasTopLevelSection(content, "graphhopper")
-	hasServer := hasTopLevelSection(content, "server")
-	hasLogging := hasTopLevelSection(content, "logging")
-	if !hasGraphHopper && !hasServer && !hasLogging {
-		// GraphHopperConfig-style YAML can be root-level; wrap it so it can be parsed by our runtime loader.
-		content = wrapGraphHopperRoot(content)
+
+	var top map[string]any
+	if err := yaml.Unmarshal(data, &top); err != nil {
+		return nil, fmt.Errorf("parse yaml config: %w", err)
+	}
+	top = normalizeMap(top)
+	if top == nil {
+		top = map[string]any{}
 	}
 
-	cfg := NewGraphHopperConfig()
-	server := map[string]any{"application_connectors": []any{map[string]any{"port": 8989}}}
-	logging := map[string]any{}
-
-	section := ""
-	listMode := ""
-	currentProfile := -1
-
-	for _, rawLine := range strings.Split(content, "\n") {
-		line := stripComments(rawLine)
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		trimmed := strings.TrimSpace(line)
-		indent := leadingSpaces(rawLine)
-
-		if indent == 0 && strings.HasSuffix(trimmed, ":") {
-			section = strings.TrimSuffix(trimmed, ":")
-			listMode = ""
-			currentProfile = -1
-			continue
-		}
-
-		switch section {
-		case "graphhopper":
-			if indent == 2 && strings.HasSuffix(trimmed, ":") {
-				key := strings.TrimSuffix(trimmed, ":")
-				switch key {
-				case "profiles", "profiles_ch", "profiles_lm", "copyrights":
-					listMode = key
-					currentProfile = -1
-				default:
-					// Nested maps are ignored for now, consistent with GraphHopperConfig behavior in this scaffold.
-					listMode = ""
-					currentProfile = -1
-				}
-				continue
-			}
-			if strings.HasPrefix(trimmed, "- ") {
-				item := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
-				switch listMode {
-				case "profiles":
-					if strings.HasPrefix(item, "name:") {
-						name := parseStringValue(strings.TrimSpace(strings.TrimPrefix(item, "name:")))
-						cfg.profiles = append(cfg.profiles, config.Profile{Name: name})
-						currentProfile = len(cfg.profiles) - 1
-					}
-				case "profiles_ch":
-					if strings.HasPrefix(item, "profile:") {
-						name := parseStringValue(strings.TrimSpace(strings.TrimPrefix(item, "profile:")))
-						cfg.chProfiles = append(cfg.chProfiles, config.CHProfile{Profile: name})
-					}
-				case "profiles_lm":
-					if strings.HasPrefix(item, "profile:") {
-						name := parseStringValue(strings.TrimSpace(strings.TrimPrefix(item, "profile:")))
-						cfg.lmProfiles = append(cfg.lmProfiles, config.LMProfile{Profile: name})
-					}
-				case "copyrights":
-					cfg.copyrights = append(cfg.copyrights, parseStringValue(item))
-				}
-				continue
-			}
-
-			if listMode == "profiles" && currentProfile >= 0 && indent > 2 {
-				if key, value, ok := splitKeyValue(trimmed); ok {
-					switch key {
-					case "custom_model_files":
-						cfg.profiles[currentProfile].CustomModelFiles = parseStringList(value)
-					case "weighting":
-						cfg.profiles[currentProfile].Weighting = parseStringValue(value)
-					case "navigation_mode":
-						cfg.profiles[currentProfile].NavigationMode = parseStringValue(value)
-					}
-				}
-			}
-
-			if indent == 2 {
-				if key, value, ok := splitKeyValue(trimmed); ok {
-					cfg.properties[key] = parseScalar(value)
-				}
-			}
-		case "server":
-			if key, value, ok := splitKeyValue(trimmed); ok && key == "port" {
-				port := int(parseInt(value, 8989))
-				server["application_connectors"] = []any{map[string]any{"port": port}}
-			}
-		case "logging":
-			if key, value, ok := splitKeyValue(trimmed); ok {
-				logging[key] = parseScalar(value)
-			}
-		}
+	ghSection, err := extractGraphHopperSection(top)
+	if err != nil {
+		return nil, err
 	}
-
+	cfg, err := parseGraphHopperConfig(ghSection)
+	if err != nil {
+		return nil, err
+	}
 	if _, ok := cfg.properties["graph.location"]; !ok {
 		cfg.properties["graph.location"] = "graph-cache"
 	}
@@ -147,123 +63,381 @@ func LoadRuntimeConfig(path string) (*RuntimeConfig, error) {
 		cfg.properties["routing.snap_preventions_default"] = "tunnel, bridge, ferry"
 	}
 
+	server, err := parseServerConfig(top["server"])
+	if err != nil {
+		return nil, err
+	}
+	logging, err := parseMapSection(top["logging"], "logging")
+	if err != nil {
+		return nil, err
+	}
+
 	return &RuntimeConfig{GraphHopper: cfg, Server: server, Logging: logging}, nil
 }
 
-func hasTopLevelSection(content, key string) bool {
-	want := key + ":"
-	for _, rawLine := range strings.Split(content, "\n") {
-		trimmed := strings.TrimSpace(stripComments(rawLine))
-		if trimmed == "" {
+func extractGraphHopperSection(top map[string]any) (map[string]any, error) {
+	_, hasServer := top["server"]
+	_, hasLogging := top["logging"]
+	ghRaw, hasGraphHopper := top["graphhopper"]
+
+	if hasGraphHopper {
+		ghSection, ok := asMap(ghRaw)
+		if !ok {
+			return nil, fmt.Errorf("'graphhopper' section must be a map")
+		}
+		return normalizeMap(ghSection), nil
+	}
+	if !hasServer && !hasLogging {
+		return normalizeMap(top), nil
+	}
+	return map[string]any{}, nil
+}
+
+func parseGraphHopperConfig(section map[string]any) (GraphHopperConfig, error) {
+	cfg := NewGraphHopperConfig()
+
+	if raw, ok := section["profiles"]; ok {
+		profiles, err := parseList(raw, "profiles", parseProfile)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.profiles = profiles
+	}
+	if raw, ok := section["profiles_ch"]; ok {
+		chProfiles, err := parseList(raw, "profiles_ch", parseCHProfile)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.chProfiles = chProfiles
+	}
+	if raw, ok := section["profiles_lm"]; ok {
+		lmProfiles, err := parseList(raw, "profiles_lm", parseLMProfile)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.lmProfiles = lmProfiles
+	}
+	if raw, ok := section["copyrights"]; ok {
+		copyrights, err := parseStringSlice(raw, "copyrights")
+		if err != nil {
+			return cfg, err
+		}
+		cfg.copyrights = copyrights
+	}
+
+	for key, value := range section {
+		switch key {
+		case "profiles", "profiles_ch", "profiles_lm", "copyrights":
 			continue
+		default:
+			cfg.properties[key] = normalizeValue(value)
 		}
-		if leadingSpaces(rawLine) == 0 && trimmed == want {
-			return true
+	}
+
+	for i, p := range cfg.profiles {
+		if strings.TrimSpace(p.Name) == "" {
+			return cfg, fmt.Errorf("profile at index %d is missing required field 'name'", i)
 		}
 	}
-	return false
-}
-
-func wrapGraphHopperRoot(content string) string {
-	var b strings.Builder
-	b.WriteString("graphhopper:\n")
-	for _, line := range strings.Split(content, "\n") {
-		if line == "" {
-			b.WriteString("\n")
-			continue
+	for i, p := range cfg.chProfiles {
+		if strings.TrimSpace(p.Profile) == "" {
+			return cfg, fmt.Errorf("profiles_ch entry at index %d is missing required field 'profile'", i)
 		}
-		b.WriteString("  ")
-		b.WriteString(line)
-		b.WriteString("\n")
 	}
-	return b.String()
-}
-
-func leadingSpaces(s string) int {
-	count := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] != ' ' {
-			break
+	for i, p := range cfg.lmProfiles {
+		if strings.TrimSpace(p.Profile) == "" {
+			return cfg, fmt.Errorf("profiles_lm entry at index %d is missing required field 'profile'", i)
 		}
-		count++
 	}
-	return count
+
+	return cfg, nil
 }
 
-func stripComments(line string) string {
-	idx := strings.Index(line, "#")
-	if idx == -1 {
-		return line
+func parseProfile(entry map[string]any) (config.Profile, error) {
+	profile := config.Profile{Weighting: "custom"}
+
+	for key, value := range entry {
+		switch key {
+		case "name":
+			name, ok := value.(string)
+			if !ok {
+				return profile, fmt.Errorf("profiles.name must be a string")
+			}
+			profile.Name = name
+		case "weighting":
+			weighting, ok := value.(string)
+			if !ok {
+				return profile, fmt.Errorf("profiles.weighting must be a string")
+			}
+			profile.Weighting = weighting
+		case "navigation_mode":
+			navigationMode, ok := value.(string)
+			if !ok {
+				return profile, fmt.Errorf("profiles.navigation_mode must be a string")
+			}
+			profile.NavigationMode = navigationMode
+		case "custom_model_files":
+			files, err := parseStringSlice(value, "profiles.custom_model_files")
+			if err != nil {
+				return profile, err
+			}
+			profile.CustomModelFiles = files
+		case "custom_model":
+			m, ok := asMap(value)
+			if !ok {
+				return profile, fmt.Errorf("profiles.custom_model must be an object")
+			}
+			profile.CustomModel = normalizeMap(m)
+		case "turn_costs":
+			m, ok := asMap(value)
+			if !ok {
+				return profile, fmt.Errorf("profiles.turn_costs must be an object")
+			}
+			profile.TurnCosts = normalizeMap(m)
+		default:
+			if profile.Hints == nil {
+				profile.Hints = map[string]interface{}{}
+			}
+			profile.Hints[key] = normalizeValue(value)
+		}
 	}
-	return line[:idx]
+
+	return profile, nil
 }
 
-func splitKeyValue(line string) (string, string, bool) {
-	idx := strings.Index(line, ":")
-	if idx == -1 {
-		return "", "", false
+func parseCHProfile(entry map[string]any) (config.CHProfile, error) {
+	profile := config.CHProfile{}
+	for key, value := range entry {
+		switch key {
+		case "profile":
+			name, ok := value.(string)
+			if !ok {
+				return profile, fmt.Errorf("profiles_ch.profile must be a string")
+			}
+			profile.Profile = name
+		case "preparation_profile":
+			name, ok := value.(string)
+			if !ok {
+				return profile, fmt.Errorf("profiles_ch.preparation_profile must be a string")
+			}
+			profile.PreparationProfile = name
+		default:
+			return profile, fmt.Errorf("unsupported profiles_ch field %q", key)
+		}
 	}
-	key := strings.TrimSpace(line[:idx])
-	value := strings.TrimSpace(line[idx+1:])
-	if key == "" || value == "" {
-		return "", "", false
-	}
-	return key, value, true
+	return profile, nil
 }
 
-func parseStringList(value string) []string {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-		value = strings.TrimSuffix(strings.TrimPrefix(value, "["), "]")
+func parseLMProfile(entry map[string]any) (config.LMProfile, error) {
+	profile := config.LMProfile{}
+	for key, value := range entry {
+		switch key {
+		case "profile":
+			name, ok := value.(string)
+			if !ok {
+				return profile, fmt.Errorf("profiles_lm.profile must be a string")
+			}
+			profile.Profile = name
+		case "preparation_profile":
+			name, ok := value.(string)
+			if !ok {
+				return profile, fmt.Errorf("profiles_lm.preparation_profile must be a string")
+			}
+			profile.PreparationProfile = name
+		default:
+			return profile, fmt.Errorf("unsupported profiles_lm field %q", key)
+		}
 	}
-	if strings.TrimSpace(value) == "" {
+	return profile, nil
+}
+
+func parseList[T any](raw any, field string, parseEntry func(map[string]any) (T, error)) ([]T, error) {
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be a list", field)
+	}
+	out := make([]T, 0, len(list))
+	for i, item := range list {
+		entryMap, ok := asMap(item)
+		if !ok {
+			return nil, fmt.Errorf("%s[%d] must be an object", field, i)
+		}
+		entry, err := parseEntry(normalizeMap(entryMap))
+		if err != nil {
+			return nil, fmt.Errorf("%s[%d]: %w", field, i, err)
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func parseStringSlice(raw any, field string) ([]string, error) {
+	switch value := raw.(type) {
+	case []any:
+		out := make([]string, 0, len(value))
+		for i, item := range value {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("%s[%d] must be a string", field, i)
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	case []string:
+		out := make([]string, len(value))
+		copy(out, value)
+		return out, nil
+	case string:
+		parts := strings.Split(value, ",")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("%s must be a list of strings", field)
+	}
+}
+
+func parseServerConfig(raw any) (map[string]any, error) {
+	server := map[string]any{"application_connectors": []any{map[string]any{"port": 8989}}}
+	if raw == nil {
+		return server, nil
+	}
+
+	parsed, ok := asMap(raw)
+	if !ok {
+		return nil, fmt.Errorf("server section must be a map")
+	}
+	server = normalizeMap(parsed)
+
+	if _, ok := firstConnectorPort(server); !ok {
+		if port, ok := toInt(server["port"]); ok {
+			server["application_connectors"] = []any{map[string]any{"port": port}}
+		} else {
+			server["application_connectors"] = []any{map[string]any{"port": 8989}}
+		}
+	}
+	return server, nil
+}
+
+func firstConnectorPort(server map[string]any) (int, bool) {
+	raw, ok := server["application_connectors"]
+	if !ok {
+		return 0, false
+	}
+	connectors, ok := raw.([]any)
+	if !ok || len(connectors) == 0 {
+		return 0, false
+	}
+	first, ok := connectors[0].(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	return toInt(first["port"])
+}
+
+func parseMapSection(raw any, field string) (map[string]any, error) {
+	if raw == nil {
+		return map[string]any{}, nil
+	}
+	parsed, ok := asMap(raw)
+	if !ok {
+		return nil, fmt.Errorf("%s section must be a map", field)
+	}
+	return normalizeMap(parsed), nil
+}
+
+func normalizeMap(m map[string]any) map[string]any {
+	if m == nil {
 		return nil
 	}
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = parseStringValue(strings.TrimSpace(p))
-		if p != "" {
-			out = append(out, p)
+	normalized := make(map[string]any, len(m))
+	for key, value := range m {
+		normalized[key] = normalizeValue(value)
+	}
+	return normalized
+}
+
+func normalizeValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return normalizeMap(v)
+	case map[any]any:
+		mapped := make(map[string]any, len(v))
+		for key, item := range v {
+			mapped[fmt.Sprint(key)] = normalizeValue(item)
 		}
+		return mapped
+	case []any:
+		items := make([]any, len(v))
+		for i, item := range v {
+			items[i] = normalizeValue(item)
+		}
+		return items
+	default:
+		return v
 	}
-	return out
 }
 
-func parseStringValue(value string) string {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
-		return strings.Trim(value, "\"")
+func asMap(value any) (map[string]any, bool) {
+	switch v := value.(type) {
+	case map[string]any:
+		return v, true
+	case map[any]any:
+		mapped := make(map[string]any, len(v))
+		for key, item := range v {
+			mapped[fmt.Sprint(key)] = item
+		}
+		return mapped, true
+	default:
+		return nil, false
 	}
-	if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
-		return strings.Trim(value, "'")
-	}
-	return value
 }
 
-func parseScalar(value string) any {
-	value = strings.TrimSpace(value)
-	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-		return parseStringList(value)
-	}
-	if b, err := strconv.ParseBool(value); err == nil {
-		return b
-	}
-	if i, err := strconv.Atoi(value); err == nil {
-		return i
-	}
-	if f, err := strconv.ParseFloat(value, 64); err == nil {
-		return f
-	}
-	return parseStringValue(value)
+type numeric interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 |
+		~float32 | ~float64
 }
 
-func parseInt(value string, def int64) int64 {
-	i, err := strconv.ParseInt(parseStringValue(value), 10, 64)
-	if err != nil {
-		return def
+func toNumber[T numeric](value any) (T, bool) {
+	switch v := value.(type) {
+	case int:
+		return T(v), true
+	case int8:
+		return T(v), true
+	case int16:
+		return T(v), true
+	case int32:
+		return T(v), true
+	case int64:
+		return T(v), true
+	case uint:
+		return T(v), true
+	case uint8:
+		return T(v), true
+	case uint16:
+		return T(v), true
+	case uint32:
+		return T(v), true
+	case uint64:
+		return T(v), true
+	case float32:
+		return T(v), true
+	case float64:
+		return T(v), true
+	default:
+		var zero T
+		return zero, false
 	}
-	return i
+}
+
+func toInt(value any) (int, bool) {
+	return toNumber[int](value)
 }
 
 func (c *GraphHopperConfig) SetProfiles(profiles []config.Profile) { c.profiles = profiles }
@@ -274,7 +448,14 @@ func (c *GraphHopperConfig) SetLMProfiles(p []config.LMProfile)    { c.lmProfile
 func (c GraphHopperConfig) GetLMProfiles() []config.LMProfile      { return c.lmProfiles }
 func (c GraphHopperConfig) GetCopyrights() []string                { return c.copyrights }
 func (c *GraphHopperConfig) PutObject(key string, value any)       { c.properties[key] = value }
-func (c GraphHopperConfig) AsMap() map[string]any                  { return c.properties }
+
+func (c GraphHopperConfig) AsMap() map[string]any {
+	out := make(map[string]any, len(c.properties))
+	for key, value := range c.properties {
+		out[key] = value
+	}
+	return out
+}
 
 func (c GraphHopperConfig) Has(key string) bool {
 	_, ok := c.properties[key]
@@ -282,89 +463,89 @@ func (c GraphHopperConfig) Has(key string) bool {
 }
 
 func (c GraphHopperConfig) GetString(key, def string) string {
-	v, ok := c.properties[key]
-	if !ok || v == nil {
+	value, ok := c.properties[key]
+	if !ok || value == nil {
 		return def
 	}
-	s, ok := v.(string)
-	if ok {
-		return s
+	s, ok := value.(string)
+	if !ok {
+		return def
 	}
-	return fmt.Sprint(v)
+	return s
 }
 
 func (c GraphHopperConfig) GetBool(key string, def bool) bool {
-	v, ok := c.properties[key]
-	if !ok || v == nil {
+	value, ok := c.properties[key]
+	if !ok || value == nil {
 		return def
 	}
-	switch t := v.(type) {
-	case bool:
-		return t
-	case string:
-		b, err := strconv.ParseBool(t)
-		if err != nil {
-			return def
-		}
-		return b
-	default:
+	b, ok := value.(bool)
+	if !ok {
 		return def
 	}
+	return b
 }
 
 func (c GraphHopperConfig) GetInt(key string, def int) int {
-	v, ok := c.properties[key]
-	if !ok || v == nil {
+	value, ok := c.properties[key]
+	if !ok || value == nil {
 		return def
 	}
-	switch t := v.(type) {
-	case int:
-		return t
-	case int64:
-		return int(t)
-	case float64:
-		return int(t)
-	case string:
-		i, err := strconv.Atoi(strings.TrimSpace(t))
-		if err != nil {
-			return def
-		}
-		return i
-	default:
+	n, ok := toNumber[int](value)
+	if !ok {
 		return def
 	}
+	return n
+}
+
+func (c GraphHopperConfig) GetLong(key string, def int64) int64 {
+	value, ok := c.properties[key]
+	if !ok || value == nil {
+		return def
+	}
+	n, ok := toNumber[int64](value)
+	if !ok {
+		return def
+	}
+	return n
+}
+
+func (c GraphHopperConfig) GetFloat(key string, def float32) float32 {
+	value, ok := c.properties[key]
+	if !ok || value == nil {
+		return def
+	}
+	n, ok := toNumber[float32](value)
+	if !ok {
+		return def
+	}
+	return n
+}
+
+func (c GraphHopperConfig) GetDouble(key string, def float64) float64 {
+	value, ok := c.properties[key]
+	if !ok || value == nil {
+		return def
+	}
+	n, ok := toNumber[float64](value)
+	if !ok {
+		return def
+	}
+	return n
 }
 
 func (c GraphHopperConfig) GetFloat64(key string, def float64) float64 {
-	v, ok := c.properties[key]
-	if !ok || v == nil {
-		return def
-	}
-	switch t := v.(type) {
-	case float64:
-		return t
-	case int:
-		return float64(t)
-	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
-		if err != nil {
-			return def
-		}
-		return f
-	default:
-		return def
-	}
+	return c.GetDouble(key, def)
 }
 
 func (c GraphHopperConfig) SnapPreventionsDefault() []string {
-	raw := c.GetString("routing.snap_preventions_default", "")
-	parts := strings.Split(raw, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
+	value, ok := c.properties["routing.snap_preventions_default"]
+	if !ok || value == nil {
+		return nil
 	}
-	return out
+	items, err := parseStringSlice(value, "routing.snap_preventions_default")
+	if err != nil {
+		return nil
+	}
+	return items
 }
