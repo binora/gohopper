@@ -1,4 +1,0 @@
-{
-  "json_paths": ["took", "info.took"],
-  "header_keys": ["date", "x-gh-took", "content-length"]
-}

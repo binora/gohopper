@@ -1,19 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"gohopper/core"
 	"gohopper/core/util"
-	"gohopper/tools/conformance"
 	webapi "gohopper/web-api"
 	webbundle "gohopper/web-bundle"
 )
@@ -42,8 +38,6 @@ func main() {
 		err = runImport(os.Args[2:])
 	case "route":
 		err = runRoute(os.Args[2:])
-	case "conformance":
-		err = runConformance(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -55,7 +49,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: gohopper <server|import|route|conformance> ...")
+	fmt.Fprintln(os.Stderr, "usage: gohopper <server|import|route> ...")
 }
 
 func runServer(args []string) error {
@@ -122,102 +116,6 @@ func runRoute(args []string) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(payload)
-}
-
-func runConformance(args []string) error {
-	fs := flag.NewFlagSet("conformance", flag.ContinueOnError)
-	casesPath := fs.String("cases", "", "JSON file with test cases")
-	allowlistPath := fs.String("allowlist", "testdata/conformance/allowlist.json", "JSON allowlist file for known nondeterministic fields")
-	reportOutPath := fs.String("report-out", "", "Optional path to write JSON conformance report")
-	ghURL := fs.String("gh-url", "http://localhost:8989", "GraphHopper base URL")
-	goURL := fs.String("go-url", "http://localhost:8989", "GoHopper base URL")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *casesPath == "" {
-		return fmt.Errorf("--cases is required")
-	}
-	cases, err := conformance.LoadCases(*casesPath)
-	if err != nil {
-		return err
-	}
-	allowlist, err := conformance.LoadAllowlist(*allowlistPath)
-	if err != nil {
-		return err
-	}
-
-	results := make([]conformance.CaseComparison, 0, len(cases))
-	for _, tc := range cases {
-		ghRes, err := doCase(*ghURL, tc.Method, tc.Path, tc.Body)
-		if err != nil {
-			return fmt.Errorf("%s against gh: %w", tc.Name, err)
-		}
-		goRes, err := doCase(*goURL, tc.Method, tc.Path, tc.Body)
-		if err != nil {
-			return fmt.Errorf("%s against go: %w", tc.Name, err)
-		}
-		cmp := conformance.CompareResults(tc.Name, ghRes, goRes, allowlist)
-		results = append(results, cmp)
-		if cmp.Equal {
-			fmt.Printf("OK   %s\n", tc.Name)
-		} else {
-			fmt.Printf("FAIL %s\n", tc.Name)
-			fmt.Printf("  status gh=%d go=%d\n", cmp.StatusGH, cmp.StatusGo)
-			fmt.Printf("  reason=%s\n", cmp.FailureReason)
-			fmt.Printf("  gh=%s\n", mustMarshal(cmp.BodyGH))
-			fmt.Printf("  go=%s\n", mustMarshal(cmp.BodyGo))
-		}
-	}
-
-	report := conformance.BuildReport(results)
-	if err := conformance.WriteReport(*reportOutPath, report); err != nil {
-		return err
-	}
-	if report.Failed > 0 {
-		return fmt.Errorf("%d conformance case(s) failed", report.Failed)
-	}
-	return nil
-}
-
-type caseResult = conformance.HTTPResult
-
-func doCase(baseURL, method, path string, body []byte) (caseResult, error) {
-	fullURL := strings.TrimRight(baseURL, "/") + path
-	var reader io.Reader
-	if len(body) > 0 {
-		reader = bytes.NewReader(body)
-	}
-	req, err := http.NewRequest(method, fullURL, reader)
-	if err != nil {
-		return caseResult{}, err
-	}
-	if len(body) > 0 {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return caseResult{}, err
-	}
-	defer res.Body.Close()
-	payload, _ := io.ReadAll(res.Body)
-	var decoded any
-	if len(payload) > 0 {
-		_ = json.Unmarshal(payload, &decoded)
-	}
-	headers := make(map[string]string, len(res.Header))
-	for k, values := range res.Header {
-		if len(values) > 0 {
-			headers[k] = values[0]
-		} else {
-			headers[k] = ""
-		}
-	}
-	return caseResult{Status: res.StatusCode, Headers: headers, JSON: decoded}, nil
-}
-
-func mustMarshal(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
 }
 
 func initGraphHopper(configPath string) (*core.RuntimeConfig, *core.GraphHopper, error) {

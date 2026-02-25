@@ -305,7 +305,7 @@ Exit gate:
 1. Release candidate tagged with full parity evidence.
 
 ## Important Public APIs / Interfaces / Types
-1. CLI commands remain: `import`, `server`, `route`, `conformance`.
+1. CLI commands remain: `import`, `server`, `route` (conformance runs in CI pipeline).
 2. Config contract centers on GraphHopper-compatible `graphhopper:` keys and profile/ch/lm fields.
 3. HTTP contract prioritizes exact `/route` parity first, then `/nearest`, `/info`, `/health`, then remaining APIs.
 4. Error payload shape follows GH style: message + hints list.

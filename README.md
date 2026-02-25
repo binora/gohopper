@@ -13,14 +13,13 @@ GoHopper is a GraphHopper 11.0 rewrite in Go with a deliberately familiar struct
 - `web-api/` request/response types (`GHRequest`, `GHResponse`, `ResponsePath`)
 - `web-bundle/resources/` HTTP resources (`/route`, `/nearest`, `/info`, `/health`)
 - `web-bundle/server.go` server wiring
-- `tools/` conformance tooling and fixtures
+- `.github/workflows/` CI pipeline including conformance checks
 
 ## Commands
 
 - `gohopper import config-example.yml`
 - `gohopper server config-example.yml`
 - `gohopper route --config config-example.yml --point 52.53,13.35 --point 52.50,13.43`
-- `gohopper conformance --cases testdata/conformance/route_cases.json --gh-url http://localhost:8989 --go-url http://localhost:8989`
 
 ## Status
 
