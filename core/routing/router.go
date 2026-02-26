@@ -112,7 +112,7 @@ func (r *Router) checkNoLegacyParameters(request webapi.GHRequest) error {
 
 func (r *Router) checkAtLeastOnePoint(request webapi.GHRequest) error {
 	if len(request.Points) == 0 {
-		return fmt.Errorf("You have to pass at least one point")
+		return fmt.Errorf("you have to pass at least one point")
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func (r *Router) checkIfPointsAreInBoundsAndNotNull(points []util.GHPoint) error
 	bounds := r.graph.GetBounds()
 	for i, point := range points {
 		if math.IsNaN(point.Lat) || math.IsNaN(point.Lon) {
-			return fmt.Errorf("Point %d is null", i)
+			return fmt.Errorf("point %d is null", i)
 		}
 		if !bounds.Contains(point.Lat, point.Lon) {
 			return webapi.PointOutOfBoundsError{Message: fmt.Sprintf("Point %d is out of bounds: %s, the bounds are: %+v", i, point.String(), bounds), Point: i}
@@ -132,11 +132,11 @@ func (r *Router) checkIfPointsAreInBoundsAndNotNull(points []util.GHPoint) error
 
 func (r *Router) checkHeadings(request webapi.GHRequest) error {
 	if len(request.Headings) > 1 && len(request.Headings) != len(request.Points) {
-		return fmt.Errorf("The number of 'heading' parameters must be zero, one or equal to the number of points (%d)", len(request.Points))
+		return fmt.Errorf("the number of 'heading' parameters must be zero, one or equal to the number of points (%d)", len(request.Points))
 	}
 	for i, h := range request.Headings {
 		if !webapi.IsAzimuthValue(h) {
-			return fmt.Errorf("Heading for point %d must be in range [0,360) or NaN, but was: %v", i, h)
+			return fmt.Errorf("heading for point %d must be in range [0,360) or NaN, but was: %v", i, h)
 		}
 	}
 	return nil
@@ -144,21 +144,21 @@ func (r *Router) checkHeadings(request webapi.GHRequest) error {
 
 func (r *Router) checkPointHints(request webapi.GHRequest) error {
 	if len(request.PointHints) > 0 && len(request.PointHints) != len(request.Points) {
-		return fmt.Errorf("If you pass point_hint, you need to pass exactly one hint for every point, empty hints will be ignored")
+		return fmt.Errorf("if you pass point_hint, you need to pass exactly one hint for every point, empty hints will be ignored")
 	}
 	return nil
 }
 
 func (r *Router) checkCurbsides(request webapi.GHRequest) error {
 	if len(request.Curbsides) > 0 && len(request.Curbsides) != len(request.Points) {
-		return fmt.Errorf("If you pass curbside, you need to pass exactly one curbside for every point, empty curbsides will be ignored")
+		return fmt.Errorf("if you pass curbside, you need to pass exactly one curbside for every point, empty curbsides will be ignored")
 	}
 	return nil
 }
 
 func (r *Router) checkNoBlockArea(request webapi.GHRequest) error {
 	if request.Hints.Has("block_area") {
-		return fmt.Errorf("The `block_area` parameter is no longer supported. Use a custom model with `areas` instead.")
+		return fmt.Errorf("the `block_area` parameter is no longer supported, use a custom model with `areas` instead")
 	}
 	return nil
 }

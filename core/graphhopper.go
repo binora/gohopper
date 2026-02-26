@@ -117,16 +117,16 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 	seenProfiles := map[string]struct{}{}
 	for _, p := range cfg.GetProfiles() {
 		if p.Name == "" {
-			return errors.New("Profile name cannot be empty")
+			return errors.New("profile name cannot be empty")
 		}
 		if !validProfileName.MatchString(p.Name) {
-			return fmt.Errorf("Profile names may only contain lower case letters, numbers and underscores, given: %s", p.Name)
+			return fmt.Errorf("profile names may only contain lower case letters, numbers and underscores, given: %s", p.Name)
 		}
 		if p.Weighting != "" && p.Weighting != "custom" {
-			return fmt.Errorf("Could not create weighting for profile: '%s': Weighting '%s' not supported", p.Name, p.Weighting)
+			return fmt.Errorf("could not create weighting for profile: '%s': weighting '%s' not supported", p.Name, p.Weighting)
 		}
 		if _, ok := seenProfiles[p.Name]; ok {
-			return fmt.Errorf("Profile names must be unique. Duplicate name: '%s'", p.Name)
+			return fmt.Errorf("profile names must be unique, duplicate name: '%s'", p.Name)
 		}
 		seenProfiles[p.Name] = struct{}{}
 	}
@@ -137,7 +137,7 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 			return fmt.Errorf("CH profile references unknown profile '%s'", p.Profile)
 		}
 		if _, ok := seenCH[p.Profile]; ok {
-			return fmt.Errorf("Duplicate CH reference to profile '%s'", p.Profile)
+			return fmt.Errorf("duplicate CH reference to profile '%s'", p.Profile)
 		}
 		seenCH[p.Profile] = struct{}{}
 	}
@@ -148,7 +148,7 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 			return fmt.Errorf("LM profile references unknown profile '%s'", p.Profile)
 		}
 		if _, ok := lmByProfile[p.Profile]; ok {
-			return fmt.Errorf("Multiple LM profiles are using the same profile '%s'", p.Profile)
+			return fmt.Errorf("multiple LM profiles are using the same profile '%s'", p.Profile)
 		}
 		lmByProfile[p.Profile] = p
 	}
@@ -162,10 +162,10 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 		}
 		prepProfile, ok := lmByProfile[p.PreparationProfile]
 		if !ok {
-			return fmt.Errorf("Unknown LM preparation profile '%s' in LM profile '%s' cannot be used as preparation_profile", p.PreparationProfile, p.Profile)
+			return fmt.Errorf("unknown LM preparation profile '%s' in LM profile '%s' cannot be used as preparation_profile", p.PreparationProfile, p.Profile)
 		}
 		if prepProfile.PreparationProfile != "" {
-			return fmt.Errorf("Cannot use '%s' as preparation_profile for LM profile '%s', because it uses another profile for preparation itself.", p.PreparationProfile, p.Profile)
+			return fmt.Errorf("cannot use '%s' as preparation_profile for LM profile '%s', because it uses another profile for preparation itself", p.PreparationProfile, p.Profile)
 		}
 	}
 
