@@ -45,67 +45,41 @@ func DecodePolyline(encoded string, is3D bool, multiplier float64) *PointList {
 	pl := NewPointList(initCap, is3D)
 
 	idx := 0
-	length := len(encoded)
 	lat, lng, ele := 0, 0, 0
 
-	for idx < length {
-		// latitude
-		shift, result := 0, 0
-		for {
-			b := int(encoded[idx]) - 63
-			idx++
-			result |= (b & 0x1f) << shift
-			shift += 5
-			if b < 0x20 {
-				break
-			}
-		}
-		if result&1 != 0 {
-			lat += ^(result >> 1)
-		} else {
-			lat += result >> 1
-		}
-
-		// longitude
-		shift, result = 0, 0
-		for {
-			b := int(encoded[idx]) - 63
-			idx++
-			result |= (b & 0x1f) << shift
-			shift += 5
-			if b < 0x20 {
-				break
-			}
-		}
-		if result&1 != 0 {
-			lng += ^(result >> 1)
-		} else {
-			lng += result >> 1
-		}
+	for idx < len(encoded) {
+		lat, idx = decodeValue(encoded, idx, lat)
+		lng, idx = decodeValue(encoded, idx, lng)
 
 		if is3D {
-			// elevation
-			shift, result = 0, 0
-			for {
-				b := int(encoded[idx]) - 63
-				idx++
-				result |= (b & 0x1f) << shift
-				shift += 5
-				if b < 0x20 {
-					break
-				}
-			}
-			if result&1 != 0 {
-				ele += ^(result >> 1)
-			} else {
-				ele += result >> 1
-			}
+			ele, idx = decodeValue(encoded, idx, ele)
 			pl.Add3D(float64(lat)/multiplier, float64(lng)/multiplier, float64(ele)/100)
 		} else {
 			pl.Add(float64(lat)/multiplier, float64(lng)/multiplier)
 		}
 	}
 	return pl
+}
+
+// decodeValue reads a single varint-encoded value from the encoded string
+// starting at idx, adds it to prev, and returns the updated accumulator and index.
+func decodeValue(encoded string, idx, prev int) (int, int) {
+	shift, result := 0, 0
+	for {
+		b := int(encoded[idx]) - 63
+		idx++
+		result |= (b & 0x1f) << shift
+		shift += 5
+		if b < 0x20 {
+			break
+		}
+	}
+	if result&1 != 0 {
+		prev += ^(result >> 1)
+	} else {
+		prev += result >> 1
+	}
+	return prev, idx
 }
 
 func appendEncoded(dst []byte, value int64) []byte {

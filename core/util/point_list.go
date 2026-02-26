@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 )
 
@@ -11,7 +12,6 @@ type PointList struct {
 	lats      []float64
 	lons      []float64
 	eles      []float64
-	size      int
 	is3D      bool
 	immutable bool
 }
@@ -50,7 +50,6 @@ func (pl *PointList) Add(lat, lon float64) {
 	}
 	pl.lats = append(pl.lats, lat)
 	pl.lons = append(pl.lons, lon)
-	pl.size++
 }
 
 func (pl *PointList) Add3D(lat, lon, ele float64) {
@@ -62,26 +61,27 @@ func (pl *PointList) Add3D(lat, lon, ele float64) {
 	} else if !math.IsNaN(ele) {
 		panic(fmt.Sprintf("this is a 2D list, cannot store elevation: %v", ele))
 	}
-	pl.size++
 }
 
 func (pl *PointList) AddPointList(other *PointList) {
 	pl.ensureMutable()
-	for i := 0; i < other.size; i++ {
-		pl.lats = append(pl.lats, other.lats[i])
-		pl.lons = append(pl.lons, other.lons[i])
-		if pl.is3D {
-			pl.eles = append(pl.eles, other.GetEle(i))
+	pl.lats = append(pl.lats, other.lats...)
+	pl.lons = append(pl.lons, other.lons...)
+	if pl.is3D {
+		if other.is3D {
+			pl.eles = append(pl.eles, other.eles...)
+		} else {
+			// Other is 2D; fill with NaN for each added point.
+			for range other.lats {
+				pl.eles = append(pl.eles, math.NaN())
+			}
 		}
 	}
-	pl.size += other.size
 }
 
 func (pl *PointList) Set(index int, lat, lon, ele float64) {
 	pl.ensureMutable()
-	if index >= pl.size {
-		panic(fmt.Sprintf("index %d out of bounds for size %d", index, pl.size))
-	}
+	pl.checkIndex(index)
 	pl.lats[index] = lat
 	pl.lons[index] = lon
 	if pl.is3D {
@@ -91,24 +91,24 @@ func (pl *PointList) Set(index int, lat, lon, ele float64) {
 	}
 }
 
-func (pl *PointList) GetLat(index int) float64 {
-	if index >= pl.size {
-		panic(fmt.Sprintf("index %d out of bounds for size %d", index, pl.size))
+func (pl *PointList) checkIndex(index int) {
+	if index >= len(pl.lats) {
+		panic(fmt.Sprintf("index %d out of bounds for size %d", index, len(pl.lats)))
 	}
+}
+
+func (pl *PointList) GetLat(index int) float64 {
+	pl.checkIndex(index)
 	return pl.lats[index]
 }
 
 func (pl *PointList) GetLon(index int) float64 {
-	if index >= pl.size {
-		panic(fmt.Sprintf("index %d out of bounds for size %d", index, pl.size))
-	}
+	pl.checkIndex(index)
 	return pl.lons[index]
 }
 
 func (pl *PointList) GetEle(index int) float64 {
-	if index >= pl.size {
-		panic(fmt.Sprintf("index %d out of bounds for size %d", index, pl.size))
-	}
+	pl.checkIndex(index)
 	if !pl.is3D {
 		return math.NaN()
 	}
@@ -122,9 +122,9 @@ func (pl *PointList) Get(index int) GHPoint3D {
 	}
 }
 
-func (pl *PointList) Size() int      { return pl.size }
-func (pl *PointList) IsEmpty() bool   { return pl.size == 0 }
-func (pl *PointList) Is3D() bool      { return pl.is3D }
+func (pl *PointList) Size() int        { return len(pl.lats) }
+func (pl *PointList) IsEmpty() bool     { return len(pl.lats) == 0 }
+func (pl *PointList) Is3D() bool        { return pl.is3D }
 func (pl *PointList) IsImmutable() bool { return pl.immutable }
 
 func (pl *PointList) MakeImmutable() *PointList {
@@ -134,24 +134,15 @@ func (pl *PointList) MakeImmutable() *PointList {
 
 func (pl *PointList) Reverse() {
 	pl.ensureMutable()
-	for i, j := 0, pl.size-1; i < j; i, j = i+1, j-1 {
-		pl.lats[i], pl.lats[j] = pl.lats[j], pl.lats[i]
-		pl.lons[i], pl.lons[j] = pl.lons[j], pl.lons[i]
-		if pl.is3D {
-			pl.eles[i], pl.eles[j] = pl.eles[j], pl.eles[i]
-		}
+	slices.Reverse(pl.lats)
+	slices.Reverse(pl.lons)
+	if pl.is3D {
+		slices.Reverse(pl.eles)
 	}
 }
 
 func (pl *PointList) Clone(reverse bool) *PointList {
-	c := NewPointList(pl.size, pl.is3D)
-	for i := 0; i < pl.size; i++ {
-		if pl.is3D {
-			c.Add3D(pl.lats[i], pl.lons[i], pl.eles[i])
-		} else {
-			c.Add(pl.lats[i], pl.lons[i])
-		}
-	}
+	c := pl.Copy(0, len(pl.lats))
 	if reverse {
 		c.Reverse()
 	}
@@ -162,39 +153,38 @@ func (pl *PointList) Copy(from, end int) *PointList {
 	if from > end {
 		panic("from must be smaller or equal to end")
 	}
-	if from < 0 || end > pl.size {
-		panic(fmt.Sprintf("illegal interval: %d, %d, size:%d", from, end, pl.size))
+	if from < 0 || end > len(pl.lats) {
+		panic(fmt.Sprintf("illegal interval: %d, %d, size:%d", from, end, len(pl.lats)))
 	}
-	length := end - from
-	c := NewPointList(length, pl.is3D)
-	c.lats = append(c.lats, pl.lats[from:end]...)
-	c.lons = append(c.lons, pl.lons[from:end]...)
+	c := &PointList{
+		lats: append([]float64(nil), pl.lats[from:end]...),
+		lons: append([]float64(nil), pl.lons[from:end]...),
+		is3D: pl.is3D,
+	}
 	if pl.is3D {
-		c.eles = append(c.eles, pl.eles[from:end]...)
+		c.eles = append([]float64(nil), pl.eles[from:end]...)
 	}
-	c.size = length
 	return c
 }
 
 func (pl *PointList) RemoveLastPoint() {
 	pl.ensureMutable()
-	if pl.size == 0 {
+	n := len(pl.lats)
+	if n == 0 {
 		panic("cannot remove last point from empty PointList")
 	}
-	pl.size--
-	pl.lats = pl.lats[:pl.size]
-	pl.lons = pl.lons[:pl.size]
+	pl.lats = pl.lats[:n-1]
+	pl.lons = pl.lons[:n-1]
 	if pl.is3D {
-		pl.eles = pl.eles[:pl.size]
+		pl.eles = pl.eles[:n-1]
 	}
 }
 
 func (pl *PointList) TrimToSize(newSize int) {
 	pl.ensureMutable()
-	if newSize > pl.size {
+	if newSize > len(pl.lats) {
 		panic("new size needs be smaller than old size")
 	}
-	pl.size = newSize
 	pl.lats = pl.lats[:newSize]
 	pl.lons = pl.lons[:newSize]
 	if pl.is3D {
@@ -204,7 +194,6 @@ func (pl *PointList) TrimToSize(newSize int) {
 
 func (pl *PointList) Clear() {
 	pl.ensureMutable()
-	pl.size = 0
 	pl.lats = pl.lats[:0]
 	pl.lons = pl.lons[:0]
 	if pl.is3D {
@@ -222,14 +211,11 @@ func (pl *PointList) Equals(other *PointList) bool {
 	if pl.IsEmpty() && other.IsEmpty() {
 		return true
 	}
-	if pl.size != other.size || pl.is3D != other.is3D {
+	if len(pl.lats) != len(other.lats) || pl.is3D != other.is3D {
 		return false
 	}
-	for i := 0; i < pl.size; i++ {
-		if !EqualsEps(pl.lats[i], other.lats[i]) {
-			return false
-		}
-		if !EqualsEps(pl.lons[i], other.lons[i]) {
+	for i := range pl.lats {
+		if !EqualsEps(pl.lats[i], other.lats[i]) || !EqualsEps(pl.lons[i], other.lons[i]) {
 			return false
 		}
 		if pl.is3D && !EqualsEpsCustom(pl.eles[i], other.eles[i], 0.01) {
@@ -241,7 +227,7 @@ func (pl *PointList) Equals(other *PointList) bool {
 
 func (pl *PointList) String() string {
 	var sb strings.Builder
-	for i := 0; i < pl.size; i++ {
+	for i := range pl.lats {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
@@ -257,8 +243,8 @@ func (pl *PointList) String() string {
 
 // ToGHPoints converts to a slice of GHPoint (2D only).
 func (pl *PointList) ToGHPoints() []GHPoint {
-	pts := make([]GHPoint, pl.size)
-	for i := 0; i < pl.size; i++ {
+	pts := make([]GHPoint, len(pl.lats))
+	for i := range pl.lats {
 		pts[i] = GHPoint{Lat: pl.lats[i], Lon: pl.lons[i]}
 	}
 	return pts

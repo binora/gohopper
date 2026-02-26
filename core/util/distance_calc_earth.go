@@ -31,7 +31,7 @@ func (d *distanceCalcEarth) CalcDist3D(fromLat, fromLon, fromEle, toLat, toLon, 
 		eleDelta = toEle - fromEle
 	}
 	length := d.CalcDist(fromLat, fromLon, toLat, toLon)
-	return math.Sqrt(eleDelta*eleDelta + length*length)
+	return math.Hypot(eleDelta, length)
 }
 
 func (d *distanceCalcEarth) CalcDenormalizedDist(normedDist float64) float64 {
@@ -74,21 +74,24 @@ func (d *distanceCalcEarth) CalcNormalizedEdgeDistance3D(rLat, rLon, rEle, aLat,
 func (d *distanceCalcEarth) ValidEdgeDistance(rLat, rLon, aLat, aLon, bLat, bLon float64) bool {
 	shrink := calcShrinkFactor(aLat, bLat)
 
-	aLatN, aLonN := aLat, aLon*shrink
-	bLatN, bLonN := bLat, bLon*shrink
-	rLatN, rLonN := rLat, rLon*shrink
+	aLonN := aLon * shrink
+	bLonN := bLon * shrink
+	rLonN := rLon * shrink
 
-	arX := rLonN - aLonN
-	arY := rLatN - aLatN
 	abX := bLonN - aLonN
-	abY := bLatN - aLatN
-	abAR := arX*abX + arY*abY
+	abY := bLat - aLat
 
+	// dot(AR, AB) > 0: R is past A along AB
+	arX := rLonN - aLonN
+	arY := rLat - aLat
+	dotARAB := arX*abX + arY*abY
+
+	// dot(RB, AB) > 0: R is before B along AB
 	rbX := bLonN - rLonN
-	rbY := bLatN - rLatN
-	abRB := rbX*abX + rbY*abY
+	rbY := bLat - rLat
+	dotRBAB := rbX*abX + rbY*abY
 
-	return abAR > 0 && abRB > 0
+	return dotARAB > 0 && dotRBAB > 0
 }
 
 func (d *distanceCalcEarth) CalcCrossingPointToEdge(rLat, rLon, aLat, aLon, bLat, bLon float64) GHPoint {
@@ -140,7 +143,7 @@ func (d *distanceCalcEarth) IntermediatePoint(f, lat1, lon1, lat2, lon2 float64)
 	y := A*cosLat1*math.Sin(lon1Rad) + B*cosLat2*math.Sin(lon2Rad)
 	z := A*math.Sin(lat1Rad) + B*math.Sin(lat2Rad)
 
-	midLat := toDeg(math.Atan2(z, math.Sqrt(x*x+y*y)))
+	midLat := toDeg(math.Atan2(z, math.Hypot(x, y)))
 	midLon := toDeg(math.Atan2(y, x))
 
 	return GHPoint{Lat: midLat, Lon: midLon}
@@ -163,12 +166,12 @@ func calcShrinkFactor(aLat, bLat float64) float64 {
 func calcNormEdgeDist(dc DistanceCalc, rLat, rLon, aLat, aLon, bLat, bLon float64) float64 {
 	shrink := calcShrinkFactor(aLat, bLat)
 
-	aLatN, aLonN := aLat, aLon*shrink
-	bLatN, bLonN := bLat, bLon*shrink
-	rLatN, rLonN := rLat, rLon*shrink
+	aLonN := aLon * shrink
+	bLonN := bLon * shrink
+	rLonN := rLon * shrink
 
 	dLon := bLonN - aLonN
-	dLat := bLatN - aLatN
+	dLat := bLat - aLat
 
 	if dLat == 0 {
 		return dc.CalcNormalizedDistCoords(aLat, rLon, rLat, rLon)
@@ -178,10 +181,10 @@ func calcNormEdgeDist(dc DistanceCalc, rLat, rLon, aLat, aLon, bLat, bLon float6
 	}
 
 	norm := dLon*dLon + dLat*dLat
-	factor := ((rLonN-aLonN)*dLon + (rLatN-aLatN)*dLat) / norm
+	factor := ((rLonN-aLonN)*dLon + (rLat-aLat)*dLat) / norm
 
 	cLon := aLonN + factor*dLon
-	cLat := aLatN + factor*dLat
+	cLat := aLat + factor*dLat
 	return dc.CalcNormalizedDistCoords(cLat, cLon/shrink, rLat, rLon)
 }
 
@@ -191,31 +194,27 @@ func calcNormEdgeDist3D(dc DistanceCalc, rLat, rLon, rEle, aLat, aLon, aEle, bLa
 	}
 
 	shrink := calcShrinkFactor(aLat, bLat)
+	invMPD := 1.0 / MetersPerDegree
 
-	aLatN := aLat
 	aLonN := aLon * shrink
-	aEleN := aEle / MetersPerDegree
-
-	bLatN := bLat
 	bLonN := bLon * shrink
-	bEleN := bEle / MetersPerDegree
-
-	rLatN := rLat
 	rLonN := rLon * shrink
-	rEleN := rEle / MetersPerDegree
+	aEleN := aEle * invMPD
+	bEleN := bEle * invMPD
+	rEleN := rEle * invMPD
 
 	dLon := bLonN - aLonN
-	dLat := bLatN - aLatN
+	dLat := bLat - aLat
 	dEle := bEleN - aEleN
 
 	norm := dLon*dLon + dLat*dLat + dEle*dEle
-	factor := ((rLonN-aLonN)*dLon + (rLatN-aLatN)*dLat + (rEleN-aEleN)*dEle) / norm
+	factor := ((rLonN-aLonN)*dLon + (rLat-aLat)*dLat + (rEleN-aEleN)*dEle) / norm
 	if math.IsNaN(factor) {
 		factor = 0
 	}
 
 	cLon := aLonN + factor*dLon
-	cLat := aLatN + factor*dLat
+	cLat := aLat + factor*dLat
 	cEle := (aEleN + factor*dEle) * MetersPerDegree
 	return dc.CalcNormalizedDistCoords(cLat, cLon/shrink, rLat, rLon) + dc.CalcNormalizedDist(rEle-cEle)
 }
@@ -223,12 +222,12 @@ func calcNormEdgeDist3D(dc DistanceCalc, rLat, rLon, rEle, aLat, aLon, aEle, bLa
 func calcCrossingPointToEdge(rLat, rLon, aLat, aLon, bLat, bLon float64) GHPoint {
 	shrink := calcShrinkFactor(aLat, bLat)
 
-	aLatN, aLonN := aLat, aLon*shrink
-	bLatN, bLonN := bLat, bLon*shrink
-	rLatN, rLonN := rLat, rLon*shrink
+	aLonN := aLon * shrink
+	bLonN := bLon * shrink
+	rLonN := rLon * shrink
 
 	dLon := bLonN - aLonN
-	dLat := bLatN - aLatN
+	dLat := bLat - aLat
 
 	if dLat == 0 {
 		return GHPoint{Lat: aLat, Lon: rLon}
@@ -238,18 +237,22 @@ func calcCrossingPointToEdge(rLat, rLon, aLat, aLon, bLat, bLon float64) GHPoint
 	}
 
 	norm := dLon*dLon + dLat*dLat
-	factor := ((rLonN-aLonN)*dLon + (rLatN-aLatN)*dLat) / norm
+	factor := ((rLonN-aLonN)*dLon + (rLat-aLat)*dLat) / norm
 
 	cLon := aLonN + factor*dLon
-	cLat := aLatN + factor*dLat
+	cLat := aLat + factor*dLat
 	return GHPoint{Lat: cLat, Lon: cLon / shrink}
 }
 
 func calcPLDist(dc DistanceCalc, pl *PointList) float64 {
-	is3d := pl.Is3D()
+	n := pl.Size()
+	if n < 2 {
+		return 0
+	}
+	is3D := pl.Is3D()
 	var dist float64
-	for i := 1; i < pl.Size(); i++ {
-		if is3d {
+	for i := 1; i < n; i++ {
+		if is3D {
 			dist += dc.CalcDist3D(
 				pl.GetLat(i-1), pl.GetLon(i-1), pl.GetEle(i-1),
 				pl.GetLat(i), pl.GetLon(i), pl.GetEle(i))

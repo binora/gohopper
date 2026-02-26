@@ -115,19 +115,12 @@ func (b BBox) CalculateIntersection(other BBox) (BBox, bool) {
 }
 
 func (b BBox) IsValid() bool {
-	if b.MinLon >= b.MaxLon {
+	if b.MinLon >= b.MaxLon || b.MinLat >= b.MaxLat {
 		return false
 	}
-	if b.MinLat >= b.MaxLat {
+	if b.Is3D && (b.MinEle > b.MaxEle ||
+		b.MaxEle == -math.MaxFloat64 || b.MinEle == math.MaxFloat64) {
 		return false
-	}
-	if b.Is3D {
-		if b.MinEle > b.MaxEle {
-			return false
-		}
-		if b.MaxEle == -math.MaxFloat64 || b.MinEle == math.MaxFloat64 {
-			return false
-		}
 	}
 	return b.MaxLat != -math.MaxFloat64 && b.MinLat != math.MaxFloat64 &&
 		b.MaxLon != -math.MaxFloat64 && b.MinLon != math.MaxFloat64
@@ -161,36 +154,37 @@ func (b BBox) ToGeoJSON() []float64 {
 	return []float64{Round6(b.MinLon), Round6(b.MinLat), Round6(b.MaxLon), Round6(b.MaxLat)}
 }
 
-// ParseTwoPoints parses "lat1,lon1,lat2,lon2" into a BBox.
-func ParseTwoPoints(s string) (BBox, error) {
+// parse4Floats splits a comma-separated string into exactly 4 float64 values.
+func parse4Floats(s string) ([4]float64, error) {
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 {
-		return BBox{}, fmt.Errorf("BBox should have 4 parts but was %s", s)
+		return [4]float64{}, fmt.Errorf("BBox should have 4 parts but was %s", s)
 	}
-	vals := make([]float64, 4)
+	var vals [4]float64
 	for i, p := range parts {
 		v, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
 		if err != nil {
-			return BBox{}, fmt.Errorf("invalid number in BBox: %w", err)
+			return [4]float64{}, fmt.Errorf("invalid number in BBox: %w", err)
 		}
 		vals[i] = v
+	}
+	return vals, nil
+}
+
+// ParseTwoPoints parses "lat1,lon1,lat2,lon2" into a BBox.
+func ParseTwoPoints(s string) (BBox, error) {
+	vals, err := parse4Floats(s)
+	if err != nil {
+		return BBox{}, err
 	}
 	return FromPoints(vals[0], vals[1], vals[2], vals[3]), nil
 }
 
 // ParseBBoxString parses "minLon,maxLon,minLat,maxLat" into a BBox.
 func ParseBBoxString(s string) (BBox, error) {
-	parts := strings.Split(s, ",")
-	if len(parts) != 4 {
-		return BBox{}, fmt.Errorf("BBox should have 4 parts but was %s", s)
-	}
-	vals := make([]float64, 4)
-	for i, p := range parts {
-		v, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
-		if err != nil {
-			return BBox{}, fmt.Errorf("invalid number in BBox: %w", err)
-		}
-		vals[i] = v
+	vals, err := parse4Floats(s)
+	if err != nil {
+		return BBox{}, err
 	}
 	return NewBBox(vals[0], vals[1], vals[2], vals[3]), nil
 }
@@ -216,8 +210,8 @@ func CalcBBox(points []GHPoint) BBox {
 		MinLat: points[0].Lat, MaxLat: points[0].Lat,
 		MinEle: math.NaN(), MaxEle: math.NaN(),
 	}
-	for i := 1; i < len(points); i++ {
-		b.Update(points[i].Lat, points[i].Lon)
+	for _, p := range points[1:] {
+		b.Update(p.Lat, p.Lon)
 	}
 	return b
 }
