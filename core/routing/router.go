@@ -54,14 +54,15 @@ func (r *Router) Route(request webapi.GHRequest) webapi.GHResponse {
 
 	distance := 0.0
 	for i := 1; i < len(request.Points); i++ {
-		distance += util.DistanceCalcEarth(request.Points[i-1], request.Points[i])
+		distance += util.HaversineDistance(request.Points[i-1], request.Points[i])
 	}
 	timeMs := int64((distance / 13000.0) * 3600.0 * 1000.0)
 	if len(request.Points) <= 1 {
 		timeMs = 0
 	}
 
-	bbox := util.CalcBBox(request.Points)
+	bboxVal := util.CalcBBox(request.Points)
+	bbox := bboxVal.ToArray()
 	instructions := make([]webapi.Instruction, 0, 2)
 	if request.Options.Instructions {
 		instructions = append(instructions, webapi.Instruction{Text: "Continue", Distance: distance, Time: timeMs, Interval: [2]int{0, maxInt(0, len(request.Points)-1)}, Sign: 0})
@@ -78,7 +79,7 @@ func (r *Router) Route(request webapi.GHRequest) webapi.GHResponse {
 	}
 	if request.Options.CalcPoints {
 		if request.Options.PointsEncoded {
-			enc := util.EncodePolyline(request.Points, request.Options.PointsEncodedMultiplier)
+			enc := util.EncodePolylineFromPoints(request.Points, request.Options.PointsEncodedMultiplier)
 			path.Points = enc
 			path.SnappedWaypoints = enc
 		} else {
