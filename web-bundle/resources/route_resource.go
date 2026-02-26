@@ -3,7 +3,6 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -134,7 +133,7 @@ func parseGetRequest(req *http.Request, snapPreventionsDefault []string, hasElev
 	ghReq.Options.GPXMillis = q.Get("gpx.millis")
 
 	if ghReq.Options.Elevation && !hasElevation {
-		return ghReq, fmt.Errorf("Elevation not supported!")
+		return ghReq, fmt.Errorf("elevation not supported")
 	}
 
 	hints := webapi.NewPMap()
@@ -364,11 +363,4 @@ func buildGPX(request webapi.GHRequest, response webapi.GHResponse) string {
 func xmlEscape(s string) string {
 	repl := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;", "'", "&apos;")
 	return repl.Replace(s)
-}
-
-func maybeNaN(v float64) float64 {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return 0
-	}
-	return v
 }

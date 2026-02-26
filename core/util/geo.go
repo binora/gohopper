@@ -7,11 +7,16 @@ import (
 	"strings"
 )
 
-const earthRadiusMeters = 6371000.0
-
+// GHPoint represents a geographic point with latitude and longitude.
 type GHPoint struct {
 	Lat float64 `json:"-"`
 	Lon float64 `json:"-"`
+}
+
+// GHPoint3D extends GHPoint with elevation.
+type GHPoint3D struct {
+	GHPoint
+	Ele float64
 }
 
 func ParseGHPoint(value string) (GHPoint, error) {
@@ -41,37 +46,12 @@ func (p GHPoint) String() string {
 	return fmt.Sprintf("%f,%f", p.Lat, p.Lon)
 }
 
-func DistanceCalcEarth(a, b GHPoint) float64 {
-	lat1 := a.Lat * math.Pi / 180
-	lat2 := b.Lat * math.Pi / 180
-	dLat := (b.Lat - a.Lat) * math.Pi / 180
-	dLon := (b.Lon - a.Lon) * math.Pi / 180
-	s1 := math.Sin(dLat / 2)
-	s2 := math.Sin(dLon / 2)
-	h := s1*s1 + math.Cos(lat1)*math.Cos(lat2)*s2*s2
-	return 2 * earthRadiusMeters * math.Asin(math.Sqrt(h))
+func (p GHPoint) IsValid() bool {
+	return !math.IsNaN(p.Lat) && !math.IsNaN(p.Lon)
 }
 
-func CalcBBox(points []GHPoint) [4]float64 {
-	if len(points) == 0 {
-		return [4]float64{}
-	}
-	minLon, minLat := points[0].Lon, points[0].Lat
-	maxLon, maxLat := points[0].Lon, points[0].Lat
-	for i := 1; i < len(points); i++ {
-		p := points[i]
-		if p.Lon < minLon {
-			minLon = p.Lon
-		}
-		if p.Lon > maxLon {
-			maxLon = p.Lon
-		}
-		if p.Lat < minLat {
-			minLat = p.Lat
-		}
-		if p.Lat > maxLat {
-			maxLat = p.Lat
-		}
-	}
-	return [4]float64{minLon, minLat, maxLon, maxLat}
+// HaversineDistance computes the haversine distance between two points in meters.
+// This is a convenience wrapper for DistEarth.CalcDist.
+func HaversineDistance(a, b GHPoint) float64 {
+	return DistEarth.CalcDist(a.Lat, a.Lon, b.Lat, b.Lon)
 }

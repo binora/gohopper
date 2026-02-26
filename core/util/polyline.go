@@ -2,22 +2,84 @@ package util
 
 import "math"
 
-func EncodePolyline(points []GHPoint, multiplier float64) string {
+// EncodePolyline encodes a PointList into a Google-compatible encoded polyline string.
+func EncodePolyline(pl *PointList, includeElevation bool, multiplier float64) string {
+	if multiplier < 1 {
+		panic("multiplier cannot be smaller than 1")
+	}
+	out := make([]byte, 0, max(20, pl.Size()*3))
+	prevLat, prevLon, prevEle := 0, 0, 0
+	for i := 0; i < pl.Size(); i++ {
+		num := int(math.Floor(pl.GetLat(i)*multiplier + 0.5))
+		out = appendEncoded(out, int64(num-prevLat))
+		prevLat = num
+
+		num = int(math.Floor(pl.GetLon(i)*multiplier + 0.5))
+		out = appendEncoded(out, int64(num-prevLon))
+		prevLon = num
+
+		if includeElevation {
+			num = int(math.Floor(pl.GetEle(i)*100 + 0.5))
+			out = appendEncoded(out, int64(num-prevEle))
+			prevEle = num
+		}
+	}
+	return string(out)
+}
+
+// EncodePolylineFromPoints encodes a slice of GHPoint (2D) into an encoded polyline string.
+func EncodePolylineFromPoints(points []GHPoint, multiplier float64) string {
 	if multiplier <= 0 {
 		multiplier = 1e5
 	}
-	out := make([]byte, 0, len(points)*8)
-	lastLat := int64(0)
-	lastLon := int64(0)
-	for _, p := range points {
-		lat := int64(math.Round(p.Lat * multiplier))
-		lon := int64(math.Round(p.Lon * multiplier))
-		out = appendEncoded(out, lat-lastLat)
-		out = appendEncoded(out, lon-lastLon)
-		lastLat = lat
-		lastLon = lon
+	pl := NewPointListFromGHPoints(points)
+	return EncodePolyline(pl, false, multiplier)
+}
+
+// DecodePolyline decodes a Google-compatible encoded polyline string into a PointList.
+func DecodePolyline(encoded string, is3D bool, multiplier float64) *PointList {
+	if multiplier < 1 {
+		panic("multiplier cannot be smaller than 1")
 	}
-	return string(out)
+	initCap := max(10, len(encoded)/4)
+	pl := NewPointList(initCap, is3D)
+
+	idx := 0
+	lat, lng, ele := 0, 0, 0
+
+	for idx < len(encoded) {
+		lat, idx = decodeValue(encoded, idx, lat)
+		lng, idx = decodeValue(encoded, idx, lng)
+
+		if is3D {
+			ele, idx = decodeValue(encoded, idx, ele)
+			pl.Add3D(float64(lat)/multiplier, float64(lng)/multiplier, float64(ele)/100)
+		} else {
+			pl.Add(float64(lat)/multiplier, float64(lng)/multiplier)
+		}
+	}
+	return pl
+}
+
+// decodeValue reads a single varint-encoded value from the encoded string
+// starting at idx, adds it to prev, and returns the updated accumulator and index.
+func decodeValue(encoded string, idx, prev int) (int, int) {
+	shift, result := 0, 0
+	for {
+		b := int(encoded[idx]) - 63
+		idx++
+		result |= (b & 0x1f) << shift
+		shift += 5
+		if b < 0x20 {
+			break
+		}
+	}
+	if result&1 != 0 {
+		prev += ^(result >> 1)
+	} else {
+		prev += result >> 1
+	}
+	return prev, idx
 }
 
 func appendEncoded(dst []byte, value int64) []byte {

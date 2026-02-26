@@ -33,5 +33,5 @@ func (r *NearestResource) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if elevation && r.hasElevation {
 		coordinates = []float64{snap.SnappedPoint.Lon, snap.SnappedPoint.Lat, 0}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"type": "Point", "coordinates": coordinates, "distance": util.DistanceCalcEarth(point, snap.SnappedPoint)})
+	writeJSON(w, http.StatusOK, map[string]any{"type": "Point", "coordinates": coordinates, "distance": util.HaversineDistance(point, snap.SnappedPoint)})
 }

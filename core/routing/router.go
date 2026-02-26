@@ -54,14 +54,15 @@ func (r *Router) Route(request webapi.GHRequest) webapi.GHResponse {
 
 	distance := 0.0
 	for i := 1; i < len(request.Points); i++ {
-		distance += util.DistanceCalcEarth(request.Points[i-1], request.Points[i])
+		distance += util.HaversineDistance(request.Points[i-1], request.Points[i])
 	}
 	timeMs := int64((distance / 13000.0) * 3600.0 * 1000.0)
 	if len(request.Points) <= 1 {
 		timeMs = 0
 	}
 
-	bbox := util.CalcBBox(request.Points)
+	bboxVal := util.CalcBBox(request.Points)
+	bbox := bboxVal.ToArray()
 	instructions := make([]webapi.Instruction, 0, 2)
 	if request.Options.Instructions {
 		instructions = append(instructions, webapi.Instruction{Text: "Continue", Distance: distance, Time: timeMs, Interval: [2]int{0, maxInt(0, len(request.Points)-1)}, Sign: 0})
@@ -78,7 +79,7 @@ func (r *Router) Route(request webapi.GHRequest) webapi.GHResponse {
 	}
 	if request.Options.CalcPoints {
 		if request.Options.PointsEncoded {
-			enc := util.EncodePolyline(request.Points, request.Options.PointsEncodedMultiplier)
+			enc := util.EncodePolylineFromPoints(request.Points, request.Options.PointsEncodedMultiplier)
 			path.Points = enc
 			path.SnappedWaypoints = enc
 		} else {
@@ -111,7 +112,7 @@ func (r *Router) checkNoLegacyParameters(request webapi.GHRequest) error {
 
 func (r *Router) checkAtLeastOnePoint(request webapi.GHRequest) error {
 	if len(request.Points) == 0 {
-		return fmt.Errorf("You have to pass at least one point")
+		return fmt.Errorf("you have to pass at least one point")
 	}
 	return nil
 }
@@ -120,7 +121,7 @@ func (r *Router) checkIfPointsAreInBoundsAndNotNull(points []util.GHPoint) error
 	bounds := r.graph.GetBounds()
 	for i, point := range points {
 		if math.IsNaN(point.Lat) || math.IsNaN(point.Lon) {
-			return fmt.Errorf("Point %d is null", i)
+			return fmt.Errorf("point %d is null", i)
 		}
 		if !bounds.Contains(point.Lat, point.Lon) {
 			return webapi.PointOutOfBoundsError{Message: fmt.Sprintf("Point %d is out of bounds: %s, the bounds are: %+v", i, point.String(), bounds), Point: i}
@@ -131,11 +132,11 @@ func (r *Router) checkIfPointsAreInBoundsAndNotNull(points []util.GHPoint) error
 
 func (r *Router) checkHeadings(request webapi.GHRequest) error {
 	if len(request.Headings) > 1 && len(request.Headings) != len(request.Points) {
-		return fmt.Errorf("The number of 'heading' parameters must be zero, one or equal to the number of points (%d)", len(request.Points))
+		return fmt.Errorf("the number of 'heading' parameters must be zero, one or equal to the number of points (%d)", len(request.Points))
 	}
 	for i, h := range request.Headings {
 		if !webapi.IsAzimuthValue(h) {
-			return fmt.Errorf("Heading for point %d must be in range [0,360) or NaN, but was: %v", i, h)
+			return fmt.Errorf("heading for point %d must be in range [0,360) or NaN, but was: %v", i, h)
 		}
 	}
 	return nil
@@ -143,21 +144,21 @@ func (r *Router) checkHeadings(request webapi.GHRequest) error {
 
 func (r *Router) checkPointHints(request webapi.GHRequest) error {
 	if len(request.PointHints) > 0 && len(request.PointHints) != len(request.Points) {
-		return fmt.Errorf("If you pass point_hint, you need to pass exactly one hint for every point, empty hints will be ignored")
+		return fmt.Errorf("if you pass point_hint, you need to pass exactly one hint for every point, empty hints will be ignored")
 	}
 	return nil
 }
 
 func (r *Router) checkCurbsides(request webapi.GHRequest) error {
 	if len(request.Curbsides) > 0 && len(request.Curbsides) != len(request.Points) {
-		return fmt.Errorf("If you pass curbside, you need to pass exactly one curbside for every point, empty curbsides will be ignored")
+		return fmt.Errorf("if you pass curbside, you need to pass exactly one curbside for every point, empty curbsides will be ignored")
 	}
 	return nil
 }
 
 func (r *Router) checkNoBlockArea(request webapi.GHRequest) error {
 	if request.Hints.Has("block_area") {
-		return fmt.Errorf("The `block_area` parameter is no longer supported. Use a custom model with `areas` instead.")
+		return fmt.Errorf("the `block_area` parameter is no longer supported, use a custom model with `areas` instead")
 	}
 	return nil
 }
