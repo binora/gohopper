@@ -58,6 +58,9 @@ func EleToUInt(ele float64) int {
 	if ele < -1000 {
 		return 0
 	}
+	if ele >= float64(maxEleUint)/eleFactor-1000 {
+		return maxEleUint
+	}
 	v := int(math.Floor((ele+1000)*eleFactor + 0.5))
 	if v >= maxEleUint {
 		return maxEleUint

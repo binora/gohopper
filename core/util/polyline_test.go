@@ -45,20 +45,36 @@ func TestPolylineRoundtrip2D(t *testing.T) {
 	assertTrue(t, poly.Equals(decoded))
 }
 
-func TestPolylineRoundtripAdditional(t *testing.T) {
-	pl := CreatePointList(50.3139, 10.612793, 50.04303, 9.497681)
-	encoded := EncodePolyline(pl, false, 1e5)
-	decoded := DecodePolyline(encoded, false, 1e5)
-	if decoded.Size() != pl.Size() {
-		t.Fatalf("size mismatch: %d != %d", decoded.Size(), pl.Size())
+func TestPolylineRoundtripBoth(t *testing.T) {
+	// Java testBoth: 5-point roundtrip
+	list5 := CreatePointList(38.5, -120.2, 43.252, -126.453,
+		40.7, -120.95, 50.3139, 10.61279, 50.04303, 9.49768)
+	str := EncodePolyline(list5, false, 1e5)
+	decoded := DecodePolyline(str, false, 1e5)
+	if decoded.Size() != list5.Size() {
+		t.Fatalf("size mismatch: %d != %d", decoded.Size(), list5.Size())
 	}
-	for i := 0; i < pl.Size(); i++ {
-		assertNear(t, pl.GetLat(i), decoded.GetLat(i), 1e-5)
-		assertNear(t, pl.GetLon(i), decoded.GetLon(i), 1e-5)
+	for i := 0; i < list5.Size(); i++ {
+		assertNear(t, list5.GetLat(i), decoded.GetLat(i), 1e-5)
+		assertNear(t, list5.GetLon(i), decoded.GetLon(i), 1e-5)
+	}
+
+	// Java testBoth: 4-point roundtrip
+	list4 := CreatePointList(38.5, -120.2, 43.252, -126.453,
+		40.7, -120.95, 40.70001, -120.95001)
+	str = EncodePolyline(list4, false, 1e5)
+	decoded = DecodePolyline(str, false, 1e5)
+	if decoded.Size() != list4.Size() {
+		t.Fatalf("size mismatch: %d != %d", decoded.Size(), list4.Size())
+	}
+	for i := 0; i < list4.Size(); i++ {
+		assertNear(t, list4.GetLat(i), decoded.GetLat(i), 1e-5)
+		assertNear(t, list4.GetLon(i), decoded.GetLon(i), 1e-5)
 	}
 }
 
 func TestPolyline3DDecode(t *testing.T) {
+	// 1-point 3D decode
 	pl := DecodePolyline("_p~iF~ps|Uo}@", true, 1e5)
 	if pl.Size() != 1 {
 		t.Fatalf("expected 1 point, got %d", pl.Size())
@@ -66,6 +82,21 @@ func TestPolyline3DDecode(t *testing.T) {
 	assertNear(t, 38.5, pl.GetLat(0), 1e-5)
 	assertNear(t, -120.2, pl.GetLon(0), 1e-5)
 	assertNear(t, 10, pl.GetEle(0), 1e-2)
+
+	// 3-point 3D decode (Java testDecode3D)
+	pl = DecodePolyline("_p~iF~ps|Uo}@_ulLnnqC_anF_mqNvxq`@?", true, 1e5)
+	if pl.Size() != 3 {
+		t.Fatalf("expected 3 points, got %d", pl.Size())
+	}
+	assertNear(t, 38.5, pl.GetLat(0), 1e-5)
+	assertNear(t, -120.2, pl.GetLon(0), 1e-5)
+	assertNear(t, 10, pl.GetEle(0), 1e-2)
+	assertNear(t, 40.7, pl.GetLat(1), 1e-5)
+	assertNear(t, -120.95, pl.GetLon(1), 1e-5)
+	assertNear(t, 1234, pl.GetEle(1), 1e-2)
+	assertNear(t, 43.252, pl.GetLat(2), 1e-5)
+	assertNear(t, -126.453, pl.GetLon(2), 1e-5)
+	assertNear(t, 1234, pl.GetEle(2), 1e-2)
 }
 
 func TestPolyline3DEncodeDecode(t *testing.T) {
@@ -76,15 +107,16 @@ func TestPolyline3DEncodeDecode(t *testing.T) {
 }
 
 func TestPolyline3DRoundtrip(t *testing.T) {
+	// 1-point 3D encode (Java testEncode3D)
 	poly1 := CreatePointList3D(38.5, -120.2, 10)
-	if EncodePolyline(poly1, true, 1e5) != "_p~iF~ps|Uo}@" {
-		t.Fatalf("unexpected 3D encoding for single point")
+	if got := EncodePolyline(poly1, true, 1e5); got != "_p~iF~ps|Uo}@" {
+		t.Fatalf("unexpected 3D encoding for single point: %q", got)
 	}
 
-	poly := CreatePointList3D(38.5, -120.2, 10, 40.7, -120.95, -5, 43.252, -126.453, 0)
-	encoded := EncodePolyline(poly, true, 1e5)
-	if encoded != "_p~iF~ps|Uo}@_ulLnnqCv|A_mqNvxq`@g^" {
-		t.Fatalf("unexpected 3D encoding: %q", encoded)
+	// 3-point 3D encode with Java's elevation values (Java testEncode3D)
+	poly := CreatePointList3D(38.5, -120.2, 10, 40.7, -120.95, 1234, 43.252, -126.453, 1234)
+	if got := EncodePolyline(poly, true, 1e5); got != "_p~iF~ps|Uo}@_ulLnnqC_anF_mqNvxq`@?" {
+		t.Fatalf("unexpected 3D encoding: %q", got)
 	}
 }
 

@@ -64,6 +64,9 @@ func TestFastAtan2(t *testing.T) {
 	assertNear(t, 11.14, fastAtan2(1, 5)*180/math.Pi, 1)
 	assertNear(t, 180, fastAtan2(0, -5)*180/math.Pi, 1e-2)
 	assertNear(t, -90, fastAtan2(-5, 0)*180/math.Pi, 1e-2)
+
+	// Java testAtan2: reference against stdlib math.Atan2
+	assertNear(t, 90, math.Atan2(1, 0)*180/math.Pi, 1e-2)
 	assertNear(t, 90, fastAtan2(1, 0)*180/math.Pi, 1e-2)
 }
 
