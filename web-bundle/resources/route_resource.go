@@ -60,7 +60,7 @@ func (r *RouteResource) doGet(w http.ResponseWriter, req *http.Request) {
 	payload := map[string]any{
 		"hints": resp.Hints,
 		"info": map[string]any{
-			"copyrights": r.config.GetCopyrights(),
+			"copyrights": r.config.Copyrights,
 			"took":       took,
 			"data_date":  r.osmDate,
 		},
@@ -86,7 +86,7 @@ func (r *RouteResource) doPost(w http.ResponseWriter, req *http.Request) {
 	payload := map[string]any{
 		"hints": resp.Hints,
 		"info": map[string]any{
-			"copyrights": r.config.GetCopyrights(),
+			"copyrights": r.config.Copyrights,
 			"took":       took,
 			"data_date":  r.osmDate,
 		},

@@ -46,7 +46,7 @@ func NewGraphHopper() *GraphHopper {
 
 func (g *GraphHopper) Init(cfg GraphHopperConfig) *GraphHopper {
 	g.ghLocation = cfg.GetString("graph.location", "graph-cache")
-	for _, p := range cfg.GetProfiles() {
+	for _, p := range cfg.Profiles {
 		g.profilesByName[p.Name] = p
 	}
 	g.initErr = validateProfileConfig(cfg)
@@ -115,7 +115,7 @@ func (g *GraphHopper) SetBounds(points []util.GHPoint) {
 
 func validateProfileConfig(cfg GraphHopperConfig) error {
 	seenProfiles := map[string]struct{}{}
-	for _, p := range cfg.GetProfiles() {
+	for _, p := range cfg.Profiles {
 		if p.Name == "" {
 			return errors.New("profile name cannot be empty")
 		}
@@ -132,7 +132,7 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 	}
 
 	seenCH := map[string]struct{}{}
-	for _, p := range cfg.GetCHProfiles() {
+	for _, p := range cfg.CHProfiles {
 		if _, ok := seenProfiles[p.Profile]; !ok {
 			return fmt.Errorf("CH profile references unknown profile '%s'", p.Profile)
 		}
@@ -143,7 +143,7 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 	}
 
 	lmByProfile := map[string]config.LMProfile{}
-	for _, p := range cfg.GetLMProfiles() {
+	for _, p := range cfg.LMProfiles {
 		if _, ok := seenProfiles[p.Profile]; !ok {
 			return fmt.Errorf("LM profile references unknown profile '%s'", p.Profile)
 		}
@@ -153,7 +153,7 @@ func validateProfileConfig(cfg GraphHopperConfig) error {
 		lmByProfile[p.Profile] = p
 	}
 
-	for _, p := range cfg.GetLMProfiles() {
+	for _, p := range cfg.LMProfiles {
 		if p.PreparationProfile == "" {
 			continue
 		}

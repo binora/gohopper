@@ -10,7 +10,7 @@ import (
 
 func TestDuplicateProfileNameError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "my_profile"}, {Name: "your_profile"}, {Name: "my_profile"}})
+	cfg.Profiles = []config.Profile{{Name: "my_profile"}, {Name: "your_profile"}, {Name: "my_profile"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "profile names must be unique, duplicate name: 'my_profile'")
 }
@@ -39,30 +39,30 @@ func TestProfileDeserialize(t *testing.T) {
 
 func TestCHProfileDoesNotExistError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile1"}})
-	cfg.SetCHProfiles([]config.CHProfile{{Profile: "other_profile"}})
+	cfg.Profiles = []config.Profile{{Name: "profile1"}}
+	cfg.CHProfiles = []config.CHProfile{{Profile: "other_profile"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "CH profile references unknown profile 'other_profile'")
 }
 
 func TestDuplicateCHProfileError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile"}})
-	cfg.SetCHProfiles([]config.CHProfile{{Profile: "profile"}, {Profile: "profile"}})
+	cfg.Profiles = []config.Profile{{Name: "profile"}}
+	cfg.CHProfiles = []config.CHProfile{{Profile: "profile"}, {Profile: "profile"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "duplicate CH reference to profile 'profile'")
 }
 
 func TestInvalidProfileNameError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "BadProfile"}})
+	cfg.Profiles = []config.Profile{{Name: "BadProfile"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "profile names may only contain lower case letters, numbers and underscores, given: BadProfile")
 }
 
 func TestUnknownWeightingError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile", Weighting: "your_weighting"}})
+	cfg.Profiles = []config.Profile{{Name: "profile", Weighting: "your_weighting"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "could not create weighting for profile: 'profile'")
 	assertErrContains(t, err, "weighting 'your_weighting' not supported")
@@ -70,40 +70,40 @@ func TestUnknownWeightingError(t *testing.T) {
 
 func TestLMProfileDoesNotExistError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile1"}})
-	cfg.SetLMProfiles([]config.LMProfile{{Profile: "other_profile"}})
+	cfg.Profiles = []config.Profile{{Name: "profile1"}}
+	cfg.LMProfiles = []config.LMProfile{{Profile: "other_profile"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "LM profile references unknown profile 'other_profile'")
 }
 
 func TestDuplicateLMProfileError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile"}})
-	cfg.SetLMProfiles([]config.LMProfile{{Profile: "profile"}, {Profile: "profile"}})
+	cfg.Profiles = []config.Profile{{Name: "profile"}}
+	cfg.LMProfiles = []config.LMProfile{{Profile: "profile"}, {Profile: "profile"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "multiple LM profiles are using the same profile 'profile'")
 }
 
 func TestUnknownLMPreparationProfileError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile"}})
-	cfg.SetLMProfiles([]config.LMProfile{{Profile: "profile", PreparationProfile: "xyz"}})
+	cfg.Profiles = []config.Profile{{Name: "profile"}}
+	cfg.LMProfiles = []config.LMProfile{{Profile: "profile", PreparationProfile: "xyz"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "LM profile references unknown preparation profile 'xyz'")
 }
 
 func TestLMPreparationProfileChainError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile1"}, {Name: "profile2"}, {Name: "profile3"}})
-	cfg.SetLMProfiles([]config.LMProfile{{Profile: "profile1"}, {Profile: "profile2", PreparationProfile: "profile1"}, {Profile: "profile3", PreparationProfile: "profile2"}})
+	cfg.Profiles = []config.Profile{{Name: "profile1"}, {Name: "profile2"}, {Name: "profile3"}}
+	cfg.LMProfiles = []config.LMProfile{{Profile: "profile1"}, {Profile: "profile2", PreparationProfile: "profile1"}, {Profile: "profile3", PreparationProfile: "profile2"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "cannot use 'profile2' as preparation_profile for LM profile 'profile3'")
 }
 
 func TestNoLMProfileForPreparationProfileError(t *testing.T) {
 	cfg := NewGraphHopperConfig()
-	cfg.SetProfiles([]config.Profile{{Name: "profile1"}, {Name: "profile2"}, {Name: "profile3"}})
-	cfg.SetLMProfiles([]config.LMProfile{{Profile: "profile1", PreparationProfile: "profile2"}})
+	cfg.Profiles = []config.Profile{{Name: "profile1"}, {Name: "profile2"}, {Name: "profile3"}}
+	cfg.LMProfiles = []config.LMProfile{{Profile: "profile1", PreparationProfile: "profile2"}}
 	err := NewGraphHopper().Init(cfg).ImportOrLoad()
 	assertErrContains(t, err, "unknown LM preparation profile 'profile2' in LM profile 'profile1' cannot be used as preparation_profile")
 }

@@ -20,8 +20,8 @@ func NewGraphHopperServer(config *core.RuntimeConfig, graphHopper *core.GraphHop
 
 func (s *GraphHopperServer) ListenAndServe() error {
 	port := 8989
-	if p, ok := firstConnectorPort(s.config.Server, "application_connectors"); ok {
-		port = p
+	if len(s.config.Server.Connectors) > 0 && s.config.Server.Connectors[0].Port != 0 {
+		port = s.config.Server.Connectors[0].Port
 	}
 
 	mux := http.NewServeMux()
@@ -36,33 +36,4 @@ func (s *GraphHopperServer) ListenAndServe() error {
 
 	addr := fmt.Sprintf(":%d", port)
 	return http.ListenAndServe(addr, mux)
-}
-
-func firstConnectorPort(server map[string]any, key string) (int, bool) {
-	v, ok := server[key]
-	if !ok {
-		return 0, false
-	}
-	list, ok := v.([]any)
-	if !ok || len(list) == 0 {
-		return 0, false
-	}
-	first, ok := list[0].(map[string]any)
-	if !ok {
-		return 0, false
-	}
-	port, ok := first["port"]
-	if !ok {
-		return 0, false
-	}
-	switch p := port.(type) {
-	case int:
-		return p, true
-	case int64:
-		return int(p), true
-	case float64:
-		return int(p), true
-	default:
-		return 0, false
-	}
 }

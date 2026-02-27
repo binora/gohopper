@@ -14,8 +14,8 @@ func TestLoadRuntimeConfig_ConfigExample(t *testing.T) {
 	if rc.GraphHopper.GetString("graph.location", "") != "graph-cache" {
 		t.Fatalf("unexpected graph.location: %q", rc.GraphHopper.GetString("graph.location", ""))
 	}
-	if len(rc.GraphHopper.GetProfiles()) == 0 || rc.GraphHopper.GetProfiles()[0].Name != "car" {
-		t.Fatalf("expected parsed profile car, got: %+v", rc.GraphHopper.GetProfiles())
+	if len(rc.GraphHopper.Profiles) == 0 || rc.GraphHopper.Profiles[0].Name != "car" {
+		t.Fatalf("expected parsed profile car, got: %+v", rc.GraphHopper.Profiles)
 	}
 	if got := rc.GraphHopper.GetString("routing.snap_preventions_default", ""); got != "tunnel, bridge, ferry" {
 		t.Fatalf("unexpected snap_preventions_default: %q", got)
@@ -34,7 +34,7 @@ func TestLoadRuntimeConfig_RootStyleGraphHopperConfig(t *testing.T) {
 	if got := rc.GraphHopper.GetInt("index.pups", 0); got != 0 {
 		t.Fatalf("expected missing dotted nested key index.pups to return default 0, got=%d", got)
 	}
-	profiles := rc.GraphHopper.GetProfiles()
+	profiles := rc.GraphHopper.Profiles
 	if len(profiles) != 1 || profiles[0].Name != "car" || profiles[0].Weighting != "custom" {
 		t.Fatalf("unexpected profiles: %+v", profiles)
 	}
@@ -65,7 +65,7 @@ server:
 		t.Fatalf("load runtime config: %v", err)
 	}
 
-	profiles := rc.GraphHopper.GetProfiles()
+	profiles := rc.GraphHopper.Profiles
 	if len(profiles) != 1 {
 		t.Fatalf("expected 1 profile, got %d", len(profiles))
 	}
@@ -76,18 +76,17 @@ server:
 		t.Fatalf("unexpected custom_model_files: %+v", profiles[0].CustomModelFiles)
 	}
 
-	ch := rc.GraphHopper.GetCHProfiles()
+	ch := rc.GraphHopper.CHProfiles
 	if len(ch) != 1 || ch[0].Profile != "car" {
 		t.Fatalf("unexpected ch profiles: %+v", ch)
 	}
-	lm := rc.GraphHopper.GetLMProfiles()
+	lm := rc.GraphHopper.LMProfiles
 	if len(lm) != 1 || lm[0].Profile != "car" || lm[0].PreparationProfile != "car" {
 		t.Fatalf("unexpected lm profiles: %+v", lm)
 	}
 
-	port, ok := firstConnectorPort(rc.Server)
-	if !ok || port != 9999 {
-		t.Fatalf("expected server port 9999, got port=%d ok=%v", port, ok)
+	if len(rc.Server.Connectors) == 0 || rc.Server.Connectors[0].Port != 9999 {
+		t.Fatalf("expected server port 9999, got %+v", rc.Server)
 	}
 }
 
@@ -112,7 +111,7 @@ func TestLoadRuntimeConfig_CopyrightsOverrideDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load runtime config: %v", err)
 	}
-	copyrights := rc.GraphHopper.GetCopyrights()
+	copyrights := rc.GraphHopper.Copyrights
 	if len(copyrights) != 2 || copyrights[0] != "A" || copyrights[1] != "B" {
 		t.Fatalf("unexpected copyrights: %+v", copyrights)
 	}
