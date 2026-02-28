@@ -28,12 +28,11 @@ type Directory interface {
 type GHDirectory struct {
 	location     string
 	typeFallback DAType
-	defaultTypes map[string]DAType // ordered by insertion
+	defaultTypes map[string]DAType
 	das          map[string]DataAccess
 	mu           sync.Mutex
 }
 
-// NewGHDirectory creates a new directory at the given location with the given default DA type.
 func NewGHDirectory(location string, defaultType DAType) *GHDirectory {
 	if location == "" {
 		location, _ = os.Getwd()
@@ -49,7 +48,6 @@ func NewGHDirectory(location string, defaultType DAType) *GHDirectory {
 	}
 }
 
-// NewRAMDirectory creates a GHDirectory with RAM_STORE (or RAM) as default type.
 func NewRAMDirectory(location string, store bool) *GHDirectory {
 	dt := DATypeRAM
 	if store {
@@ -62,8 +60,7 @@ func (d *GHDirectory) Location() string { return d.location }
 
 func (d *GHDirectory) getDefault(name string) DAType {
 	for pattern, dt := range d.defaultTypes {
-		matched, _ := filepath.Match(pattern, name)
-		if matched {
+		if matched, _ := filepath.Match(pattern, name); matched {
 			return dt
 		}
 	}
@@ -88,20 +85,19 @@ func (d *GHDirectory) CreateFull(name string, daType DAType, segmentSize int) Da
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if _, exists := d.das[name]; exists {
+	if _, ok := d.das[name]; ok {
 		panic(fmt.Sprintf("DataAccess %s has already been created", name))
 	}
+
 	var da DataAccess
-	if daType.IsInMemory() {
-		if daType.IsInteg() {
-			da = NewRAMIntDataAccess(name, d.location, daType.IsStoring(), segmentSize)
-		} else {
-			da = NewRAMDataAccess(name, d.location, daType.IsStoring(), segmentSize)
-		}
-	} else if daType.IsMMap() {
-		// MMap not yet implemented — fall back to RAM_STORE for now
+	switch {
+	case daType.IsInMemory() && daType.IsInteg():
+		da = NewRAMIntDataAccess(name, d.location, daType.IsStoring(), segmentSize)
+	case daType.IsInMemory():
+		da = NewRAMDataAccess(name, d.location, daType.IsStoring(), segmentSize)
+	case daType.IsMMap():
 		da = NewRAMDataAccess(name, d.location, true, segmentSize)
-	} else {
+	default:
 		panic(fmt.Sprintf("DAType not supported %s", daType))
 	}
 	d.das[name] = da
@@ -117,6 +113,7 @@ func (d *GHDirectory) Remove(name string) {
 	}
 	delete(d.das, name)
 	d.mu.Unlock()
+
 	da.Close()
 	if da.Type().IsStoring() {
 		os.Remove(d.location + name)

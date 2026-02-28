@@ -5,30 +5,29 @@ import "gohopper/core/util"
 // BaseGraph is the top-level graph structure managing nodes, edges, way geometry,
 // key-value storage, and turn costs.
 type BaseGraph struct {
-	Store           *BaseGraphNodesAndEdges
-	nodeAccess      NodeAccess
-	EdgeKVStorage   *KVStorage
-	TurnCostStorage *TurnCostStorage
-	wayGeometry     DataAccess
-	dir             Directory
-	segmentSize     int
-	initialized     bool
-	minGeoRef       int64
-	maxGeoRef       int64
+	Store            *BaseGraphNodesAndEdges
+	nodeAccess       NodeAccess
+	EdgeKVStorage    *KVStorage
+	TurnCostStorage  *TurnCostStorage
+	wayGeometry      DataAccess
+	dir              Directory
+	segmentSize      int
+	initialized      bool
+	minGeoRef        int64
+	maxGeoRef        int64
 	eleBytesPerCoord int
 }
 
-// NewBaseGraph creates a new BaseGraph.
 func NewBaseGraph(dir Directory, withElevation, withTurnCosts bool, segmentSize, bytesForFlags int) *BaseGraph {
 	store := NewBaseGraphNodesAndEdges(dir, withElevation, withTurnCosts, segmentSize, bytesForFlags)
 	na := newGHNodeAccess(store)
 	bg := &BaseGraph{
-		Store:         store,
-		nodeAccess:    na,
+		Store:       store,
+		nodeAccess:  na,
 		EdgeKVStorage: NewKVStorage(dir, true),
-		wayGeometry:   dir.CreateWithSegmentSize("geometry", segmentSize),
-		dir:           dir,
-		segmentSize:   segmentSize,
+		wayGeometry: dir.CreateWithSegmentSize("geometry", segmentSize),
+		dir:         dir,
+		segmentSize: segmentSize,
 	}
 	if na.Is3D() {
 		bg.eleBytesPerCoord = 3
@@ -39,15 +38,11 @@ func NewBaseGraph(dir Directory, withElevation, withTurnCosts bool, segmentSize,
 	return bg
 }
 
-// Create initializes new storage.
 func (bg *BaseGraph) Create(initSize int64) *BaseGraph {
 	bg.checkNotInitialized()
 	bg.dir.Init()
 	bg.Store.Create(initSize)
-	geoInit := initSize
-	if geoInit > 2000 {
-		geoInit = 2000
-	}
+	geoInit := min(initSize, 2000)
 	bg.wayGeometry.Create(geoInit)
 	bg.EdgeKVStorage.Create(geoInit)
 	if bg.TurnCostStorage != nil {
@@ -59,7 +54,6 @@ func (bg *BaseGraph) Create(initSize int64) *BaseGraph {
 	return bg
 }
 
-// LoadExisting loads all sub-stores from persistent storage.
 func (bg *BaseGraph) LoadExisting() bool {
 	bg.checkNotInitialized()
 	if !bg.Store.LoadExisting() {
@@ -79,7 +73,6 @@ func (bg *BaseGraph) LoadExisting() bool {
 	return true
 }
 
-// Flush writes all sub-stores to persistent storage.
 func (bg *BaseGraph) Flush() {
 	if !bg.wayGeometry.IsClosed() {
 		bg.setWayGeometryHeader()
@@ -94,7 +87,6 @@ func (bg *BaseGraph) Flush() {
 	}
 }
 
-// Close releases all resources.
 func (bg *BaseGraph) Close() {
 	if !bg.wayGeometry.IsClosed() {
 		bg.wayGeometry.Close()
@@ -108,18 +100,15 @@ func (bg *BaseGraph) Close() {
 	}
 }
 
-func (bg *BaseGraph) GetNodes() int            { return bg.Store.GetNodes() }
-func (bg *BaseGraph) GetEdges() int            { return bg.Store.GetEdges() }
-func (bg *BaseGraph) GetNodeAccess() NodeAccess { return bg.nodeAccess }
-func (bg *BaseGraph) GetBounds() util.BBox      { return bg.Store.GetBounds() }
-func (bg *BaseGraph) IsFrozen() bool            { return bg.Store.IsFrozen() }
+func (bg *BaseGraph) GetNodes() int             { return bg.Store.GetNodes() }
+func (bg *BaseGraph) GetEdges() int             { return bg.Store.GetEdges() }
+func (bg *BaseGraph) GetNodeAccess() NodeAccess  { return bg.nodeAccess }
+func (bg *BaseGraph) GetBounds() util.BBox       { return bg.Store.GetBounds() }
+func (bg *BaseGraph) IsFrozen() bool             { return bg.Store.IsFrozen() }
+func (bg *BaseGraph) SupportsTurnCosts() bool    { return bg.TurnCostStorage != nil }
 
 func (bg *BaseGraph) Freeze() {
 	bg.Store.SetFrozen(true)
-}
-
-func (bg *BaseGraph) SupportsTurnCosts() bool {
-	return bg.TurnCostStorage != nil
 }
 
 func (bg *BaseGraph) checkNotInitialized() {
@@ -128,7 +117,6 @@ func (bg *BaseGraph) checkNotInitialized() {
 	}
 }
 
-// Way geometry header: version + minGeoRef/maxGeoRef stored as two longs (4 ints)
 func (bg *BaseGraph) setWayGeometryHeader() {
 	bg.wayGeometry.SetHeader(0*4, int32(util.VersionGeometry))
 	bg.wayGeometry.SetHeader(1*4, util.BitLE.GetIntLow(bg.minGeoRef))
@@ -138,13 +126,11 @@ func (bg *BaseGraph) setWayGeometryHeader() {
 }
 
 func (bg *BaseGraph) loadWayGeometryHeader() {
-	version := bg.wayGeometry.GetHeader(0 * 4)
-	checkDAVersion("geometry", util.VersionGeometry, int(version))
+	checkDAVersion("geometry", util.VersionGeometry, int(bg.wayGeometry.GetHeader(0*4)))
 	bg.minGeoRef = util.BitLE.ToLongFromInts(bg.wayGeometry.GetHeader(1*4), bg.wayGeometry.GetHeader(2*4))
 	bg.maxGeoRef = util.BitLE.ToLongFromInts(bg.wayGeometry.GetHeader(3*4), bg.wayGeometry.GetHeader(4*4))
 }
 
-// Edge creates a new edge between nodeA and nodeB.
 func (bg *BaseGraph) Edge(nodeA, nodeB int) int {
 	if bg.IsFrozen() {
 		panic("cannot create edge on frozen graph")
@@ -152,24 +138,22 @@ func (bg *BaseGraph) Edge(nodeA, nodeB int) int {
 	return bg.Store.Edge(nodeA, nodeB)
 }
 
-// SetDist sets the distance for an edge.
-func (bg *BaseGraph) SetDist(edgeId int, distance float64) {
-	bg.Store.SetDist(bg.Store.ToEdgePointer(edgeId), distance)
+func (bg *BaseGraph) SetDist(edgeID int, distance float64) {
+	bg.Store.SetDist(bg.Store.ToEdgePointer(edgeID), distance)
 }
 
-// GetDist returns the distance of an edge.
-func (bg *BaseGraph) GetDist(edgeId int) float64 {
-	return bg.Store.GetDist(bg.Store.ToEdgePointer(edgeId))
+func (bg *BaseGraph) GetDist(edgeID int) float64 {
+	return bg.Store.GetDist(bg.Store.ToEdgePointer(edgeID))
 }
 
-// Builder provides a convenient way to create BaseGraph instances.
+// BaseGraphBuilder provides a convenient way to create BaseGraph instances.
 type BaseGraphBuilder struct {
-	dir            Directory
-	withElevation  bool
-	withTurnCosts  bool
-	bytesForFlags  int
-	segmentSize    int
-	initBytes      int64
+	dir           Directory
+	withElevation bool
+	withTurnCosts bool
+	bytesForFlags int
+	segmentSize   int
+	initBytes     int64
 }
 
 func NewBaseGraphBuilder(bytesForFlags int) *BaseGraphBuilder {

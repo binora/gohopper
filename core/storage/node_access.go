@@ -2,15 +2,15 @@ package storage
 
 // NodeAccess provides access to node properties (lat/lon/elevation/turn costs).
 type NodeAccess interface {
-	SetNode(nodeId int, lat, lon, ele float64)
-	GetLat(nodeId int) float64
-	GetLon(nodeId int) float64
-	GetEle(nodeId int) float64
+	SetNode(nodeID int, lat, lon, ele float64)
+	GetLat(nodeID int) float64
+	GetLon(nodeID int) float64
+	GetEle(nodeID int) float64
 	Is3D() bool
 	Dimension() int
-	EnsureNode(nodeId int)
-	GetTurnCostIndex(nodeId int) int
-	SetTurnCostIndex(nodeId int, value int)
+	EnsureNode(nodeID int)
+	GetTurnCostIndex(nodeID int) int
+	SetTurnCostIndex(nodeID int, value int)
 }
 
 // ghNodeAccess adapts BaseGraphNodesAndEdges to the NodeAccess interface.
@@ -22,59 +22,59 @@ func newGHNodeAccess(store *BaseGraphNodesAndEdges) *ghNodeAccess {
 	return &ghNodeAccess{store: store}
 }
 
-func (na *ghNodeAccess) EnsureNode(nodeId int) {
-	na.store.EnsureNodeCapacity(nodeId)
+func (n *ghNodeAccess) EnsureNode(nodeID int) {
+	n.store.EnsureNodeCapacity(nodeID)
 }
 
-func (na *ghNodeAccess) SetNode(nodeId int, lat, lon, ele float64) {
-	na.store.EnsureNodeCapacity(nodeId)
-	ptr := na.store.ToNodePointer(nodeId)
-	na.store.SetLat(ptr, lat)
-	na.store.SetLon(ptr, lon)
-	if na.store.WithElevation() {
-		na.store.SetEle(ptr, ele)
-		na.store.Bounds.Update3D(lat, lon, ele)
+func (n *ghNodeAccess) SetNode(nodeID int, lat, lon, ele float64) {
+	n.store.EnsureNodeCapacity(nodeID)
+	ptr := n.store.ToNodePointer(nodeID)
+	n.store.SetLat(ptr, lat)
+	n.store.SetLon(ptr, lon)
+	if n.store.WithElevation() {
+		n.store.SetEle(ptr, ele)
+		n.store.Bounds.Update3D(lat, lon, ele)
 	} else {
-		na.store.Bounds.Update(lat, lon)
+		n.store.Bounds.Update(lat, lon)
 	}
 }
 
-func (na *ghNodeAccess) GetLat(nodeId int) float64 {
-	return na.store.GetLat(na.store.ToNodePointer(nodeId))
+func (n *ghNodeAccess) GetLat(nodeID int) float64 {
+	return n.store.GetLat(n.store.ToNodePointer(nodeID))
 }
 
-func (na *ghNodeAccess) GetLon(nodeId int) float64 {
-	return na.store.GetLon(na.store.ToNodePointer(nodeId))
+func (n *ghNodeAccess) GetLon(nodeID int) float64 {
+	return n.store.GetLon(n.store.ToNodePointer(nodeID))
 }
 
-func (na *ghNodeAccess) GetEle(nodeId int) float64 {
-	if !na.store.WithElevation() {
+func (n *ghNodeAccess) GetEle(nodeID int) float64 {
+	if !n.store.WithElevation() {
 		panic("elevation is disabled")
 	}
-	return na.store.GetEle(na.store.ToNodePointer(nodeId))
+	return n.store.GetEle(n.store.ToNodePointer(nodeID))
 }
 
-func (na *ghNodeAccess) SetTurnCostIndex(nodeId int, turnCostIndex int) {
-	if !na.store.WithTurnCosts() {
+func (n *ghNodeAccess) SetTurnCostIndex(nodeID int, tcIndex int) {
+	if !n.store.WithTurnCosts() {
 		panic("this graph does not support turn costs")
 	}
-	na.store.EnsureNodeCapacity(nodeId)
-	na.store.SetTurnCostRef(na.store.ToNodePointer(nodeId), turnCostIndex)
+	n.store.EnsureNodeCapacity(nodeID)
+	n.store.SetTurnCostRef(n.store.ToNodePointer(nodeID), tcIndex)
 }
 
-func (na *ghNodeAccess) GetTurnCostIndex(nodeId int) int {
-	if !na.store.WithTurnCosts() {
+func (n *ghNodeAccess) GetTurnCostIndex(nodeID int) int {
+	if !n.store.WithTurnCosts() {
 		panic("this graph does not support turn costs")
 	}
-	return na.store.GetTurnCostRef(na.store.ToNodePointer(nodeId))
+	return n.store.GetTurnCostRef(n.store.ToNodePointer(nodeID))
 }
 
-func (na *ghNodeAccess) Is3D() bool {
-	return na.store.WithElevation()
+func (n *ghNodeAccess) Is3D() bool {
+	return n.store.WithElevation()
 }
 
-func (na *ghNodeAccess) Dimension() int {
-	if na.store.WithElevation() {
+func (n *ghNodeAccess) Dimension() int {
+	if n.store.WithElevation() {
 		return 3
 	}
 	return 2

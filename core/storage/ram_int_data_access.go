@@ -3,7 +3,8 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
+	"io"
+	"math/bits"
 	"os"
 	"path/filepath"
 )
@@ -27,8 +28,9 @@ func NewRAMIntDataAccess(name, location string, store bool, segmentSize int) *RA
 }
 
 func (r *RAMIntDataAccess) updateIntsPower() {
-	r.segmentSizeIntsPow = int(math.Log(float64(r.segmentSizeInBytes/4)) / math.Log(2))
-	r.indexDivisor = r.segmentSizeInBytes/4 - 1
+	intsPerSeg := r.segmentSizeInBytes / 4
+	r.segmentSizeIntsPow = bits.TrailingZeros(uint(intsPerSeg))
+	r.indexDivisor = intsPerSeg - 1
 }
 
 func (r *RAMIntDataAccess) Name() string { return r.name }
@@ -37,7 +39,7 @@ func (r *RAMIntDataAccess) Create(bytes int64) DataAccess {
 	if len(r.segments) > 0 {
 		panic("already created")
 	}
-	r.EnsureCapacity(max(10*4, bytes))
+	r.EnsureCapacity(max(40, bytes))
 	return r
 }
 
@@ -45,16 +47,15 @@ func (r *RAMIntDataAccess) EnsureCapacity(bytes int64) bool {
 	if bytes < 0 {
 		panic("new capacity has to be strictly positive")
 	}
-	cap := r.Capacity()
-	newBytes := bytes - cap
-	if newBytes <= 0 {
+	need := bytes - r.Capacity()
+	if need <= 0 {
 		return false
 	}
-	segsToCreate := int(newBytes) / r.segmentSizeInBytes
-	if int(newBytes)%r.segmentSizeInBytes != 0 {
-		segsToCreate++
+	n := int(need) / r.segmentSizeInBytes
+	if int(need)%r.segmentSizeInBytes != 0 {
+		n++
 	}
-	for i := 0; i < segsToCreate; i++ {
+	for i := 0; i < n; i++ {
 		r.segments = append(r.segments, make([]int32, 1<<r.segmentSizeIntsPow))
 	}
 	return true
@@ -90,23 +91,23 @@ func (r *RAMIntDataAccess) LoadExisting() bool {
 	if byteCount < 0 {
 		return false
 	}
-	if _, err := f.Seek(int64(headerOffset), 0); err != nil {
+	if _, err := f.Seek(int64(headerOffset), io.SeekStart); err != nil {
 		panic(fmt.Sprintf("problem while loading %s: %v", path, err))
 	}
-	segCount := int(byteCount) / r.segmentSizeInBytes
+	n := int(byteCount) / r.segmentSizeInBytes
 	if int(byteCount)%r.segmentSizeInBytes != 0 {
-		segCount++
+		n++
 	}
-	r.segments = make([][]int32, segCount)
+	r.segments = make([][]int32, n)
 	rawBytes := make([]byte, r.segmentSizeInBytes)
-	for s := 0; s < segCount; s++ {
-		n, _ := f.Read(rawBytes)
-		intCount := n / 4
+	for i := range r.segments {
+		nr, _ := f.Read(rawBytes)
+		intCount := nr / 4
 		area := make([]int32, intCount)
 		for j := 0; j < intCount; j++ {
 			area[j] = int32(binary.LittleEndian.Uint32(rawBytes[j*4:]))
 		}
-		r.segments[s] = area
+		r.segments[i] = area
 	}
 	return true
 }
@@ -128,50 +129,49 @@ func (r *RAMIntDataAccess) Flush() {
 	}
 	defer f.Close()
 
-	length := r.Capacity()
-	if err := r.writeHeader(f, length, r.segmentSizeInBytes); err != nil {
+	if err := r.writeHeader(f, r.Capacity(), r.segmentSizeInBytes); err != nil {
 		panic(fmt.Sprintf("couldn't store ints to %s: %v", r.fullName(), err))
 	}
-	if _, err := f.Seek(int64(headerOffset), 0); err != nil {
+	if _, err := f.Seek(int64(headerOffset), io.SeekStart); err != nil {
 		panic(fmt.Sprintf("couldn't store ints to %s: %v", r.fullName(), err))
 	}
 	for _, area := range r.segments {
-		byteArea := make([]byte, len(area)*4)
+		buf := make([]byte, len(area)*4)
 		for i, v := range area {
-			binary.LittleEndian.PutUint32(byteArea[i*4:], uint32(v))
+			binary.LittleEndian.PutUint32(buf[i*4:], uint32(v))
 		}
-		if _, err := f.Write(byteArea); err != nil {
+		if _, err := f.Write(buf); err != nil {
 			panic(fmt.Sprintf("couldn't store ints to %s: %v", r.fullName(), err))
 		}
 	}
 }
 
 func (r *RAMIntDataAccess) SetInt(bytePos int64, value int32) {
-	bytePos >>= 2
-	bufIdx := int(uint64(bytePos) >> uint(r.segmentSizeIntsPow))
-	idx := int(bytePos) & r.indexDivisor
-	r.segments[bufIdx][idx] = value
+	pos := bytePos >> 2
+	seg := int(uint64(pos) >> uint(r.segmentSizeIntsPow))
+	idx := int(pos) & r.indexDivisor
+	r.segments[seg][idx] = value
 }
 
 func (r *RAMIntDataAccess) GetInt(bytePos int64) int32 {
-	bytePos >>= 2
-	bufIdx := int(uint64(bytePos) >> uint(r.segmentSizeIntsPow))
-	idx := int(bytePos) & r.indexDivisor
-	return r.segments[bufIdx][idx]
+	pos := bytePos >> 2
+	seg := int(uint64(pos) >> uint(r.segmentSizeIntsPow))
+	idx := int(pos) & r.indexDivisor
+	return r.segments[seg][idx]
 }
 
 func (r *RAMIntDataAccess) SetShort(bytePos int64, value int16) {
 	if bytePos%4 != 0 && bytePos%4 != 2 {
 		panic(fmt.Sprintf("bytePos of wrong multiple for RAMInt %d", bytePos))
 	}
-	tmpIdx := bytePos >> 2
-	bufIdx := int(uint64(tmpIdx) >> uint(r.segmentSizeIntsPow))
-	idx := int(tmpIdx) & r.indexDivisor
-	oldVal := r.segments[bufIdx][idx]
-	if tmpIdx*4 == bytePos {
-		r.segments[bufIdx][idx] = oldVal&^0x0000FFFF | int32(value)&0x0000FFFF
+	pos := bytePos >> 2
+	seg := int(uint64(pos) >> uint(r.segmentSizeIntsPow))
+	idx := int(pos) & r.indexDivisor
+	old := r.segments[seg][idx]
+	if pos*4 == bytePos {
+		r.segments[seg][idx] = old&^0x0000FFFF | int32(value)&0x0000FFFF
 	} else {
-		r.segments[bufIdx][idx] = oldVal&0x0000FFFF | int32(value)<<16
+		r.segments[seg][idx] = old&0x0000FFFF | int32(value)<<16
 	}
 }
 
@@ -179,13 +179,13 @@ func (r *RAMIntDataAccess) GetShort(bytePos int64) int16 {
 	if bytePos%4 != 0 && bytePos%4 != 2 {
 		panic(fmt.Sprintf("bytePos of wrong multiple for RAMInt %d", bytePos))
 	}
-	tmpIdx := bytePos >> 2
-	bufIdx := int(uint64(tmpIdx) >> uint(r.segmentSizeIntsPow))
-	idx := int(tmpIdx) & r.indexDivisor
-	if tmpIdx*4 == bytePos {
-		return int16(r.segments[bufIdx][idx] & 0x0000FFFF)
+	pos := bytePos >> 2
+	seg := int(uint64(pos) >> uint(r.segmentSizeIntsPow))
+	idx := int(pos) & r.indexDivisor
+	if pos*4 == bytePos {
+		return int16(r.segments[seg][idx] & 0x0000FFFF)
 	}
-	return int16(r.segments[bufIdx][idx] >> 16)
+	return int16(r.segments[seg][idx] >> 16)
 }
 
 func (r *RAMIntDataAccess) SetBytes(bytePos int64, values []byte, length int) {
