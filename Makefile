@@ -26,6 +26,9 @@ test:
 	mkdir -p "$(GOCACHE)"
 	GOCACHE="$(GOCACHE)" $(GO) test ./...
 
+build:
+	$(GO) build -o gohopper ./...
+
 conformance:
 	GO="$(GO)" \
 	GH_JAR="$(GH_JAR)" \

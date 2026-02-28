@@ -10,7 +10,7 @@ import (
 )
 
 func TestRouterHeadingValidation(t *testing.T) {
-	router := NewRouter(storage.NewBaseGraph(), index.NewLocationIndex(), NewRouterConfig())
+	router := NewRouter(storage.NewBaseGraphBuilder(4).CreateGraph(), index.NewLocationIndex(), NewRouterConfig())
 	req := webapi.NewGHRequest()
 	req.Points = []util.GHPoint{{Lat: 52.53, Lon: 13.35}, {Lat: 52.5, Lon: 13.4}}
 	req.Headings = []float64{10, 20, 30}
@@ -21,7 +21,10 @@ func TestRouterHeadingValidation(t *testing.T) {
 }
 
 func TestRouterBasicRoute(t *testing.T) {
-	router := NewRouter(storage.NewBaseGraph(), index.NewLocationIndex(), NewRouterConfig())
+	g := storage.NewBaseGraphBuilder(4).CreateGraph()
+	// Set world bounds so the test points are within range
+	g.Store.Bounds = util.NewBBox(-180, 180, -90, 90)
+	router := NewRouter(g, index.NewLocationIndex(), NewRouterConfig())
 	req := webapi.NewGHRequest()
 	req.Points = []util.GHPoint{{Lat: 52.53, Lon: 13.35}, {Lat: 52.5, Lon: 13.4}}
 	resp := router.Route(req)

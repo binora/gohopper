@@ -20,6 +20,8 @@
 * After an important milestone, spin up a subagent that refactors the code without touching the tests.
 The goal: beautiful, idiomatic, and performant Go code needed to make that milestone successful.
 * when in plan mode, do not write code as part of the plan
+* Before starting a new milestone, run `/parity-check <package>` on the target package to understand the gap
+* After completing a milestone, run `/parity-check <package>` again to verify coverage
 
 
 

@@ -31,7 +31,8 @@ type GraphHopper struct {
 }
 
 func NewGraphHopper() *GraphHopper {
-	baseGraph := storage.NewBaseGraph()
+	dir := storage.NewRAMDirectory("", false)
+	baseGraph := storage.NewBaseGraphBuilder(4).SetDir(dir).Build()
 	locationIndex := index.NewLocationIndex()
 	routerConfig := routing.NewRouterConfig()
 	return &GraphHopper{
@@ -110,7 +111,9 @@ func (g *GraphHopper) GetProperties() map[string]string {
 }
 
 func (g *GraphHopper) SetBounds(points []util.GHPoint) {
-	g.graph.SetBounds(points)
+	for _, p := range points {
+		g.graph.Store.Bounds.Update(p.Lat, p.Lon)
+	}
 }
 
 func validateProfileConfig(cfg GraphHopperConfig) error {
