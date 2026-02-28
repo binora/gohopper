@@ -48,5 +48,5 @@ func MaxWeightExceptFind(name string) MaxWeightExcept {
 }
 
 func MaxWeightExceptCreate() *EnumEncodedValue[MaxWeightExcept] {
-	return NewEnumEncodedValue[MaxWeightExcept](MaxWeightExceptKey, enumSequence[MaxWeightExcept](int(maxWeightExceptCount)))
+	return NewEnumEncodedValue(MaxWeightExceptKey, enumSequence[MaxWeightExcept](int(maxWeightExceptCount)))
 }

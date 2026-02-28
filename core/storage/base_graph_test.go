@@ -18,10 +18,8 @@ func TestBaseGraph_SaveAndLoadFileFormat(t *testing.T) {
 	na.SetNode(1, 52.50, 13.40, 0)
 	na.SetNode(2, 52.51, 13.38, 0)
 
-	e0 := g.Edge(0, 1)
-	g.SetDist(e0, 1234.5)
-	e1 := g.Edge(1, 2)
-	g.SetDist(e1, 567.8)
+	g.Edge(0, 1).SetDistance(1234.5)
+	g.Edge(1, 2).SetDistance(567.8)
 
 	g.Flush()
 	g.Close()

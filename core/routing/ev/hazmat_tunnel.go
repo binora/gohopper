@@ -27,5 +27,5 @@ func (h HazmatTunnel) String() string {
 }
 
 func HazmatTunnelCreate() *EnumEncodedValue[HazmatTunnel] {
-	return NewEnumEncodedValue[HazmatTunnel](HazmatTunnelKey, enumSequence[HazmatTunnel](int(hazmatTunnelCount)))
+	return NewEnumEncodedValue(HazmatTunnelKey, enumSequence[HazmatTunnel](int(hazmatTunnelCount)))
 }

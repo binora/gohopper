@@ -68,5 +68,5 @@ func RoadClassFind(name string) RoadClass {
 }
 
 func RoadClassCreate() *EnumEncodedValue[RoadClass] {
-	return NewEnumEncodedValue[RoadClass](RoadClassKey, enumSequence[RoadClass](int(roadClassCount)))
+	return NewEnumEncodedValue(RoadClassKey, enumSequence[RoadClass](int(roadClassCount)))
 }

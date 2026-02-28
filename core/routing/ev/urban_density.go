@@ -25,5 +25,5 @@ func (u UrbanDensity) String() string {
 }
 
 func UrbanDensityCreate() *EnumEncodedValue[UrbanDensity] {
-	return NewEnumEncodedValue[UrbanDensity](UrbanDensityKey, enumSequence[UrbanDensity](int(urbanDensityCount)))
+	return NewEnumEncodedValue(UrbanDensityKey, enumSequence[UrbanDensity](int(urbanDensityCount)))
 }

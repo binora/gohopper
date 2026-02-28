@@ -82,5 +82,5 @@ func SurfaceFind(name string) Surface {
 }
 
 func SurfaceCreate() *EnumEncodedValue[Surface] {
-	return NewEnumEncodedValue[Surface](SurfaceKey, enumSequence[Surface](int(surfaceCount)))
+	return NewEnumEncodedValue(SurfaceKey, enumSequence[Surface](int(surfaceCount)))
 }

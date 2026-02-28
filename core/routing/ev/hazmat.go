@@ -24,5 +24,5 @@ func (h Hazmat) String() string {
 }
 
 func HazmatCreate() *EnumEncodedValue[Hazmat] {
-	return NewEnumEncodedValue[Hazmat](HazmatKey, enumSequence[Hazmat](int(hazmatCount)))
+	return NewEnumEncodedValue(HazmatKey, enumSequence[Hazmat](int(hazmatCount)))
 }

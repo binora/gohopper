@@ -26,5 +26,5 @@ func (t Toll) String() string {
 }
 
 func TollCreate() *EnumEncodedValue[Toll] {
-	return NewEnumEncodedValue[Toll](TollKey, enumSequence[Toll](int(tollCount)))
+	return NewEnumEncodedValue(TollKey, enumSequence[Toll](int(tollCount)))
 }

@@ -45,5 +45,5 @@ func RoadEnvironmentFind(name string) RoadEnvironment {
 }
 
 func RoadEnvironmentCreate() *EnumEncodedValue[RoadEnvironment] {
-	return NewEnumEncodedValue[RoadEnvironment](RoadEnvironmentKey, enumSequence[RoadEnvironment](int(roadEnvironmentCount)))
+	return NewEnumEncodedValue(RoadEnvironmentKey, enumSequence[RoadEnvironment](int(roadEnvironmentCount)))
 }

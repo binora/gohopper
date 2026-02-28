@@ -47,5 +47,5 @@ func TrackTypeFind(name string) TrackType {
 }
 
 func TrackTypeCreate() *EnumEncodedValue[TrackType] {
-	return NewEnumEncodedValue[TrackType](TrackTypeKey, enumSequence[TrackType](int(trackTypeCount)))
+	return NewEnumEncodedValue(TrackTypeKey, enumSequence[TrackType](int(trackTypeCount)))
 }

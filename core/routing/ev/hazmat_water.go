@@ -25,5 +25,5 @@ func (h HazmatWater) String() string {
 }
 
 func HazmatWaterCreate() *EnumEncodedValue[HazmatWater] {
-	return NewEnumEncodedValue[HazmatWater](HazmatWaterKey, enumSequence[HazmatWater](int(hazmatWaterCount)))
+	return NewEnumEncodedValue(HazmatWaterKey, enumSequence[HazmatWater](int(hazmatWaterCount)))
 }

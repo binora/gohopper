@@ -47,5 +47,5 @@ func FootwayFind(name string) Footway {
 }
 
 func FootwayCreate() *EnumEncodedValue[Footway] {
-	return NewEnumEncodedValue[Footway](FootwayKey, enumSequence[Footway](int(footwayCount)))
+	return NewEnumEncodedValue(FootwayKey, enumSequence[Footway](int(footwayCount)))
 }

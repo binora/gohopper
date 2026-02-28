@@ -48,5 +48,5 @@ func CrossingFind(name string) Crossing {
 }
 
 func CrossingCreate() *EnumEncodedValue[Crossing] {
-	return NewEnumEncodedValue[Crossing](CrossingKey, enumSequence[Crossing](int(crossingCount)))
+	return NewEnumEncodedValue(CrossingKey, enumSequence[Crossing](int(crossingCount)))
 }

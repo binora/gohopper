@@ -7,5 +7,6 @@ type EncodedValueLookup interface {
 	GetBooleanEncodedValue(key string) BooleanEncodedValue
 	GetIntEncodedValue(key string) IntEncodedValue
 	GetDecimalEncodedValue(key string) DecimalEncodedValue
+	GetStringEncodedValue(key string) *StringEncodedValue
 	HasEncodedValue(key string) bool
 }

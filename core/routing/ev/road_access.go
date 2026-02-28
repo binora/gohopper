@@ -15,7 +15,6 @@ const (
 	RoadAccessCustomers
 	RoadAccessDelivery
 	RoadAccessPrivate
-	RoadAccessMilitary
 	RoadAccessAgricultural
 	RoadAccessForestry
 	RoadAccessNo
@@ -26,7 +25,7 @@ const RoadAccessKey = "road_access"
 
 var roadAccessNames = [...]string{
 	"yes", "destination", "customers", "delivery",
-	"private", "military", "agricultural", "forestry", "no",
+	"private", "agricultural", "forestry", "no",
 }
 
 func (r RoadAccess) String() string {
@@ -54,5 +53,5 @@ func RoadAccessFind(name string) RoadAccess {
 }
 
 func RoadAccessCreate() *EnumEncodedValue[RoadAccess] {
-	return NewEnumEncodedValue[RoadAccess](RoadAccessKey, enumSequence[RoadAccess](int(roadAccessCount)))
+	return NewEnumEncodedValue(RoadAccessKey, enumSequence[RoadAccess](int(roadAccessCount)))
 }

@@ -53,5 +53,5 @@ func SmoothnessFind(name string) Smoothness {
 }
 
 func SmoothnessCreate() *EnumEncodedValue[Smoothness] {
-	return NewEnumEncodedValue[Smoothness](SmoothnessKey, enumSequence[Smoothness](int(smoothnessCount)))
+	return NewEnumEncodedValue(SmoothnessKey, enumSequence[Smoothness](int(smoothnessCount)))
 }

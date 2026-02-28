@@ -47,5 +47,5 @@ func RouteNetworkFind(name string) RouteNetwork {
 }
 
 func RouteNetworkCreate(name string) *EnumEncodedValue[RouteNetwork] {
-	return NewEnumEncodedValue[RouteNetwork](name, enumSequence[RouteNetwork](int(routeNetworkCount)))
+	return NewEnumEncodedValue(name, enumSequence[RouteNetwork](int(routeNetworkCount)))
 }

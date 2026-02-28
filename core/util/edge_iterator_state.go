@@ -43,6 +43,22 @@ type EdgeIteratorState interface {
 	SetReverseDecimal(property ev.DecimalEncodedValue, value float64) EdgeIteratorState
 	SetDecimalBothDir(property ev.DecimalEncodedValue, fwd, bwd float64) EdgeIteratorState
 
+	// Enum encoded value accessors — use any because Go generics can't express
+	// bounded type parameters in interface method signatures like Java's <T extends Enum>.
+	// The concrete implementation type-asserts the EnumEncodedValue.
+	GetEnum(property any) any
+	SetEnum(property any, value any) EdgeIteratorState
+	GetReverseEnum(property any) any
+	SetReverseEnum(property any, value any) EdgeIteratorState
+	SetEnumBothDir(property any, fwd, bwd any) EdgeIteratorState
+
+	// String encoded value accessors
+	GetString(property *ev.StringEncodedValue) string
+	SetString(property *ev.StringEncodedValue, value string) EdgeIteratorState
+	GetReverseString(property *ev.StringEncodedValue) string
+	SetReverseString(property *ev.StringEncodedValue, value string) EdgeIteratorState
+	SetStringBothDir(property *ev.StringEncodedValue, fwd, bwd string) EdgeIteratorState
+
 	GetName() string
 	SetKeyValues(entries map[string]any) EdgeIteratorState
 	GetKeyValues() map[string]any

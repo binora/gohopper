@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"math"
 
+	"gohopper/core/routing/ev"
 	"gohopper/core/util"
 )
+
+var _ ev.EdgeIntAccess = (*BaseGraphNodesAndEdges)(nil)
 
 const (
 	intDistFactor = 1000.0
@@ -380,6 +383,16 @@ func (s *BaseGraphNodesAndEdges) setFlagInt(edgePtr int64, byteOff int, value in
 
 func (s *BaseGraphNodesAndEdges) CreateEdgeFlags() *IntsRef {
 	return NewIntsRef((s.bytesForFlags + 3) / 4)
+}
+
+// EdgeIntAccess implementation — bridges edgeID+index to raw byte storage.
+
+func (s *BaseGraphNodesAndEdges) GetInt(edgeID, index int) int32 {
+	return s.getFlagInt(s.ToEdgePointer(edgeID), index*4)
+}
+
+func (s *BaseGraphNodesAndEdges) SetInt(edgeID, index int, value int32) {
+	s.setFlagInt(s.ToEdgePointer(edgeID), index*4, value)
 }
 
 func distToInt(distance float64) int {

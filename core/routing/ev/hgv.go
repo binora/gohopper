@@ -48,5 +48,5 @@ func HgvFind(name string) Hgv {
 }
 
 func HgvCreate() *EnumEncodedValue[Hgv] {
-	return NewEnumEncodedValue[Hgv](HgvKey, enumSequence[Hgv](int(hgvCount)))
+	return NewEnumEncodedValue(HgvKey, enumSequence[Hgv](int(hgvCount)))
 }
