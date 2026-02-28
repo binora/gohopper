@@ -5,7 +5,11 @@ import (
 	"math"
 )
 
-var _ DecimalEncodedValue = (*DecimalEncodedValueImpl)(nil)
+// Compile-time interface compliance checks.
+var (
+	_ DecimalEncodedValue = (*DecimalEncodedValueImpl)(nil)
+	_ fmt.Stringer        = (*DecimalEncodedValueImpl)(nil)
+)
 
 // DecimalEncodedValueImpl holds a signed decimal value and stores it as an
 // integer value via a conversion factor and a certain number of bits that
@@ -46,14 +50,15 @@ func NewDecimalEncodedValueImplFull(name string, bits int, minStorableValue, fac
 // defined factor) into the edge storage.
 func (e *DecimalEncodedValueImpl) SetDecimal(reverse bool, edgeID int, edgeIntAccess EdgeIntAccess, value float64) {
 	if !e.isInitialized() {
-		panic(fmt.Sprintf("Call init before using EncodedValue %s", e.GetName()))
+		panic(fmt.Sprintf("EncodedValue %s not initialized", e.GetName()))
 	}
 
 	if e.UseMaximumAsInfinity {
 		if math.IsInf(value, 0) {
 			e.IntEncodedValueImpl.SetInt(reverse, edgeID, edgeIntAccess, e.MaxStorableValue)
 			return
-		} else if value >= float64(e.MaxStorableValue)*e.Factor {
+		}
+		if value >= float64(e.MaxStorableValue)*e.Factor {
 			e.IntEncodedValueImpl.UncheckedSet(reverse, edgeID, edgeIntAccess, e.MaxStorableValue-1)
 			return
 		}
@@ -93,7 +98,8 @@ func (e *DecimalEncodedValueImpl) GetNextStorableValue(value float64) float64 {
 	if !e.UseMaximumAsInfinity && value > e.GetMaxStorableDecimal() {
 		panic(fmt.Sprintf("%s: There is no next storable value for %v. max:%v",
 			e.GetName(), value, e.GetMaxStorableDecimal()))
-	} else if e.UseMaximumAsInfinity && value > float64(e.MaxStorableValue-1)*e.Factor {
+	}
+	if e.UseMaximumAsInfinity && value > float64(e.MaxStorableValue-1)*e.Factor {
 		return math.Inf(1)
 	}
 	return e.Factor * float64(int(math.Ceil(value/e.Factor)))

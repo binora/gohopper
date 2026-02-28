@@ -1,8 +1,6 @@
 package ev
 
-import (
-	"math/bits"
-)
+import "math/bits"
 
 // EnumEncodedValue stores distinct values of an enum type by their ordinal
 // index. The number of bits is automatically derived from the number of
@@ -21,9 +19,8 @@ func NewEnumEncodedValue[E ~int](name string, values []E) *EnumEncodedValue[E] {
 // NewEnumEncodedValueDir creates an EnumEncodedValue with optional
 // two-direction storage.
 func NewEnumEncodedValueDir[E ~int](name string, values []E, storeTwoDirections bool) *EnumEncodedValue[E] {
-	numBits := bits.Len(uint(len(values) - 1))
 	return &EnumEncodedValue[E]{
-		IntEncodedValueImpl: NewIntEncodedValueImpl(name, numBits, storeTwoDirections),
+		IntEncodedValueImpl: NewIntEncodedValueImpl(name, bits.Len(uint(len(values)-1)), storeTwoDirections),
 		Values:              values,
 	}
 }

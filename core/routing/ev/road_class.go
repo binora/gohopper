@@ -1,6 +1,12 @@
 package ev
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
+
+// Compile-time interface compliance check.
+var _ fmt.Stringer = RoadClass(0)
 
 // RoadClass defines the road class of an edge, heavily influenced by the
 // highway tag in OSM. All edges that do not fit get RoadClassOther.
@@ -56,7 +62,7 @@ var roadClassNames = [...]string{
 
 // String returns the lowercase representation of the road class.
 func (rc RoadClass) String() string {
-	if int(rc) < len(roadClassNames) {
+	if rc >= 0 && int(rc) < len(roadClassNames) {
 		return roadClassNames[rc]
 	}
 	return "other"
@@ -68,9 +74,8 @@ func RoadClassFind(name string) RoadClass {
 	if name == "" {
 		return RoadClassOther
 	}
-	upper := strings.ToUpper(name)
 	for i, n := range roadClassNames {
-		if strings.ToUpper(n) == upper {
+		if strings.EqualFold(n, name) {
 			return RoadClass(i)
 		}
 	}
