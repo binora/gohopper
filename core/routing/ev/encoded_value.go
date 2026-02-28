@@ -1,7 +1,5 @@
 package ev
 
-import "math"
-
 // EncodedValue defines how to store and read values from a list of integers.
 type EncodedValue interface {
 	// Init sets the dataIndex and shift of this EncodedValue and
@@ -48,16 +46,17 @@ func (c *InitializerConfig) Next(usedBits int) {
 	c.NextShift = c.Shift + usedBits
 }
 
-func (c *InitializerConfig) getRequiredBits() int {
+// requiredBits returns the total number of bits allocated so far.
+func (c *InitializerConfig) requiredBits() int {
 	return c.DataIndex*32 + c.NextShift
 }
 
 // GetRequiredInts returns the number of int32 slots needed.
 func (c *InitializerConfig) GetRequiredInts() int {
-	return int(math.Ceil(float64(c.getRequiredBits()) / 32.0))
+	return (c.requiredBits() + 31) / 32
 }
 
 // GetRequiredBytes returns the number of bytes needed.
 func (c *InitializerConfig) GetRequiredBytes() int {
-	return int(math.Ceil(float64(c.getRequiredBits()) / 8.0))
+	return (c.requiredBits() + 7) / 8
 }
