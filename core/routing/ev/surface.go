@@ -5,11 +5,10 @@ import (
 	"strings"
 )
 
-// Compile-time interface compliance check.
 var _ fmt.Stringer = Surface(0)
 
-// Surface defines the road surface of an edge. If not tagged the value will
-// be SurfaceMissing. All unknown surface tags get SurfaceOther.
+// Surface defines the road surface of an edge.
+// SurfaceMissing for untagged, SurfaceOther for unrecognized tags.
 type Surface int
 
 const (
@@ -29,20 +28,11 @@ const (
 	SurfaceSand
 	SurfaceWood
 	SurfaceOther
+	surfaceCount
 )
 
-// SurfaceKey is the encoded value key for surface.
 const SurfaceKey = "surface"
 
-// surfaceValues holds all Surface constants in ordinal order.
-var surfaceValues = []Surface{
-	SurfaceMissing, SurfacePaved, SurfaceAsphalt, SurfaceConcrete,
-	SurfacePavingStones, SurfaceCobblestone, SurfaceUnpaved, SurfaceCompacted,
-	SurfaceFineGravel, SurfaceGravel, SurfaceGround, SurfaceDirt,
-	SurfaceGrass, SurfaceSand, SurfaceWood, SurfaceOther,
-}
-
-// surfaceNames maps each Surface to its lowercase string representation.
 var surfaceNames = [...]string{
 	"missing", "paved", "asphalt", "concrete",
 	"paving_stones", "cobblestone", "unpaved", "compacted",
@@ -50,7 +40,6 @@ var surfaceNames = [...]string{
 	"grass", "sand", "wood", "other",
 }
 
-// surfaceMap maps surface name variants to Surface values, including aliases.
 var surfaceMap map[string]Surface
 
 func init() {
@@ -70,7 +59,6 @@ func init() {
 	surfaceMap["grass_paver"] = SurfaceGrass
 }
 
-// String returns the lowercase representation of the surface.
 func (s Surface) String() string {
 	if s >= 0 && int(s) < len(surfaceNames) {
 		return surfaceNames[s]
@@ -78,9 +66,8 @@ func (s Surface) String() string {
 	return "missing"
 }
 
-// SurfaceFind returns the Surface matching the given name (stripping any
-// colon-separated suffix), or SurfaceOther for unrecognized tags.
-// Returns SurfaceMissing for an empty name.
+// SurfaceFind returns the Surface matching the given name, stripping any
+// colon-separated suffix. Returns SurfaceOther for unrecognized tags.
 func SurfaceFind(name string) Surface {
 	if name == "" {
 		return SurfaceMissing
@@ -94,7 +81,6 @@ func SurfaceFind(name string) Surface {
 	return SurfaceOther
 }
 
-// SurfaceCreate creates an EnumEncodedValue for Surface.
 func SurfaceCreate() *EnumEncodedValue[Surface] {
-	return NewEnumEncodedValue[Surface](SurfaceKey, surfaceValues)
+	return NewEnumEncodedValue[Surface](SurfaceKey, enumSequence[Surface](int(surfaceCount)))
 }

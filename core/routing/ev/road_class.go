@@ -5,11 +5,10 @@ import (
 	"strings"
 )
 
-// Compile-time interface compliance check.
 var _ fmt.Stringer = RoadClass(0)
 
 // RoadClass defines the road class of an edge, heavily influenced by the
-// highway tag in OSM. All edges that do not fit get RoadClassOther.
+// highway tag in OSM.
 type RoadClass int
 
 const (
@@ -35,22 +34,11 @@ const (
 	RoadClassCorridor
 	RoadClassConstruction
 	RoadClassBusway
+	roadClassCount
 )
 
-// RoadClassKey is the encoded value key for road class.
 const RoadClassKey = "road_class"
 
-// roadClassValues holds all RoadClass constants in ordinal order.
-var roadClassValues = []RoadClass{
-	RoadClassOther, RoadClassMotorway, RoadClassTrunk, RoadClassPrimary,
-	RoadClassSecondary, RoadClassTertiary, RoadClassResidential, RoadClassUnclassified,
-	RoadClassService, RoadClassRoad, RoadClassTrack, RoadClassBridleway,
-	RoadClassSteps, RoadClassCycleway, RoadClassPath, RoadClassLivingStreet,
-	RoadClassFootway, RoadClassPedestrian, RoadClassPlatform, RoadClassCorridor,
-	RoadClassConstruction, RoadClassBusway,
-}
-
-// roadClassNames maps each RoadClass to its lowercase string representation.
 var roadClassNames = [...]string{
 	"other", "motorway", "trunk", "primary",
 	"secondary", "tertiary", "residential", "unclassified",
@@ -60,7 +48,6 @@ var roadClassNames = [...]string{
 	"construction", "busway",
 }
 
-// String returns the lowercase representation of the road class.
 func (rc RoadClass) String() string {
 	if rc >= 0 && int(rc) < len(roadClassNames) {
 		return roadClassNames[rc]
@@ -68,8 +55,6 @@ func (rc RoadClass) String() string {
 	return "other"
 }
 
-// RoadClassFind returns the RoadClass matching the given name, or
-// RoadClassOther if not found.
 func RoadClassFind(name string) RoadClass {
 	if name == "" {
 		return RoadClassOther
@@ -82,7 +67,6 @@ func RoadClassFind(name string) RoadClass {
 	return RoadClassOther
 }
 
-// RoadClassCreate creates an EnumEncodedValue for RoadClass.
 func RoadClassCreate() *EnumEncodedValue[RoadClass] {
-	return NewEnumEncodedValue[RoadClass](RoadClassKey, roadClassValues)
+	return NewEnumEncodedValue[RoadClass](RoadClassKey, enumSequence[RoadClass](int(roadClassCount)))
 }

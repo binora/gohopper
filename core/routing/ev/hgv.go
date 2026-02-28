@@ -5,10 +5,8 @@ import (
 	"strings"
 )
 
-// Compile-time interface compliance check.
 var _ fmt.Stringer = Hgv(0)
 
-// Hgv defines the HGV (heavy goods vehicle) access of an edge.
 type Hgv int
 
 const (
@@ -20,24 +18,16 @@ const (
 	HgvDiscouraged
 	HgvAgricultural
 	HgvNo
+	hgvCount
 )
 
-// HgvKey is the encoded value key for HGV access.
 const HgvKey = "hgv"
 
-// hgvValues holds all Hgv constants in ordinal order.
-var hgvValues = []Hgv{
-	HgvMissing, HgvYes, HgvDesignated, HgvDestination,
-	HgvDelivery, HgvDiscouraged, HgvAgricultural, HgvNo,
-}
-
-// hgvNames maps each Hgv to its lowercase string representation.
 var hgvNames = [...]string{
 	"missing", "yes", "designated", "destination",
 	"delivery", "discouraged", "agricultural", "no",
 }
 
-// String returns the lowercase representation of the HGV access.
 func (h Hgv) String() string {
 	if h >= 0 && int(h) < len(hgvNames) {
 		return hgvNames[h]
@@ -45,8 +35,6 @@ func (h Hgv) String() string {
 	return "missing"
 }
 
-// HgvFind returns the Hgv matching the given name, or
-// HgvMissing if not found.
 func HgvFind(name string) Hgv {
 	if name == "" {
 		return HgvMissing
@@ -59,7 +47,6 @@ func HgvFind(name string) Hgv {
 	return HgvMissing
 }
 
-// HgvCreate creates an EnumEncodedValue for Hgv.
 func HgvCreate() *EnumEncodedValue[Hgv] {
-	return NewEnumEncodedValue[Hgv](HgvKey, hgvValues)
+	return NewEnumEncodedValue[Hgv](HgvKey, enumSequence[Hgv](int(hgvCount)))
 }

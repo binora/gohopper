@@ -5,26 +5,20 @@ package util
 type FetchMode int
 
 const (
-	FetchModeTowerOnly    FetchMode = iota // only tower (junction) nodes
-	FetchModePillarOnly                    // only pillar (intermediate) nodes
-	FetchModeBaseAndPillar                 // base node + pillar nodes
-	FetchModePillarAndAdj                  // pillar nodes + adjacent node
-	FetchModeAll                           // base + pillar + adjacent
+	FetchModeTowerOnly    FetchMode = iota
+	FetchModePillarOnly
+	FetchModeBaseAndPillar
+	FetchModePillarAndAdj
+	FetchModeAll
 )
 
+var fetchModeNames = [...]string{
+	"TOWER_ONLY", "PILLAR_ONLY", "BASE_AND_PILLAR", "PILLAR_AND_ADJ", "ALL",
+}
+
 func (m FetchMode) String() string {
-	switch m {
-	case FetchModeTowerOnly:
-		return "TOWER_ONLY"
-	case FetchModePillarOnly:
-		return "PILLAR_ONLY"
-	case FetchModeBaseAndPillar:
-		return "BASE_AND_PILLAR"
-	case FetchModePillarAndAdj:
-		return "PILLAR_AND_ADJ"
-	case FetchModeAll:
-		return "ALL"
-	default:
-		return "UNKNOWN"
+	if m >= 0 && int(m) < len(fetchModeNames) {
+		return fetchModeNames[m]
 	}
+	return "UNKNOWN"
 }

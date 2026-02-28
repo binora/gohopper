@@ -6,15 +6,13 @@ import (
 	"strings"
 )
 
-// Compile-time interface compliance checks.
 var (
 	_ IntEncodedValue = (*IntEncodedValueImpl)(nil)
 	_ fmt.Stringer    = (*IntEncodedValueImpl)(nil)
 )
 
 // IntEncodedValueImpl stores an integer value using a fixed number of bits
-// within an int32 array. It supports optional two-direction storage and
-// negate-reverse-direction mode.
+// within an int32 array.
 type IntEncodedValueImpl struct {
 	Name             string `json:"name"`
 	Bits             int    `json:"bits"`
@@ -31,14 +29,10 @@ type IntEncodedValueImpl struct {
 	BwdMask          int32  `json:"bwd_mask"`
 }
 
-// NewIntEncodedValueImpl creates an IntEncodedValueImpl with no minimum value
-// offset and no negate-reverse.
 func NewIntEncodedValueImpl(name string, bits int, storeTwoDirections bool) *IntEncodedValueImpl {
 	return NewIntEncodedValueImplFull(name, bits, 0, false, storeTwoDirections)
 }
 
-// NewIntEncodedValueImplFull creates an IntEncodedValueImpl with full control
-// over all parameters.
 func NewIntEncodedValueImplFull(name string, bits int, minStorableValue int32, negateReverseDirection, storeTwoDirections bool) *IntEncodedValueImpl {
 	if !IsValidEncodedValue(name) {
 		panic(fmt.Sprintf("EncodedValue name wasn't valid: %s. Use lower case letters, underscore and numbers only.", name))
@@ -81,22 +75,21 @@ func NewIntEncodedValueImplFull(name string, bits int, minStorableValue int32, n
 	}
 }
 
-// Init allocates bit space in the InitializerConfig for this encoded value.
-func (e *IntEncodedValueImpl) Init(init *InitializerConfig) int {
+func (e *IntEncodedValueImpl) Init(cfg *InitializerConfig) int {
 	if e.isInitialized() {
 		panic("cannot call Init multiple times")
 	}
 
-	init.Next(e.Bits)
-	e.FwdMask = init.BitMask
-	e.FwdDataIndex = init.DataIndex
-	e.FwdShift = init.Shift
+	cfg.Next(e.Bits)
+	e.FwdMask = cfg.BitMask
+	e.FwdDataIndex = cfg.DataIndex
+	e.FwdShift = cfg.Shift
 
 	if e.StoreTwoDir {
-		init.Next(e.Bits)
-		e.BwdMask = init.BitMask
-		e.BwdDataIndex = init.DataIndex
-		e.BwdShift = init.Shift
+		cfg.Next(e.Bits)
+		e.BwdMask = cfg.BitMask
+		e.BwdDataIndex = cfg.DataIndex
+		e.BwdShift = cfg.Shift
 		return 2 * e.Bits
 	}
 	return e.Bits
@@ -106,21 +99,15 @@ func (e *IntEncodedValueImpl) isInitialized() bool {
 	return e.FwdMask != 0
 }
 
-// GetName returns the hierarchical name of this encoded value.
-func (e *IntEncodedValueImpl) GetName() string {
-	return e.Name
-}
+func (e *IntEncodedValueImpl) GetName() string             { return e.Name }
+func (e *IntEncodedValueImpl) IsStoreTwoDirections() bool  { return e.StoreTwoDir }
+func (e *IntEncodedValueImpl) GetMaxStorableInt() int32    { return e.MaxStorableValue }
+func (e *IntEncodedValueImpl) GetMinStorableInt() int32    { return e.MinStorableValue }
+func (e *IntEncodedValueImpl) String() string              { return e.Name }
 
-// IsStoreTwoDirections returns true if forward and backward directions are
-// stored independently.
-func (e *IntEncodedValueImpl) IsStoreTwoDirections() bool {
-	return e.StoreTwoDir
-}
-
-// SetInt stores the given value, validating bounds.
-func (e *IntEncodedValueImpl) SetInt(reverse bool, edgeID int, edgeIntAccess EdgeIntAccess, value int32) {
+func (e *IntEncodedValueImpl) SetInt(reverse bool, edgeID int, eia EdgeIntAccess, value int32) {
 	e.checkValue(value)
-	e.UncheckedSet(reverse, edgeID, edgeIntAccess, value)
+	e.UncheckedSet(reverse, edgeID, eia, value)
 }
 
 func (e *IntEncodedValueImpl) checkValue(value int32) {
@@ -136,7 +123,7 @@ func (e *IntEncodedValueImpl) checkValue(value int32) {
 }
 
 // UncheckedSet stores the value without bounds checking.
-func (e *IntEncodedValueImpl) UncheckedSet(reverse bool, edgeID int, edgeIntAccess EdgeIntAccess, value int32) {
+func (e *IntEncodedValueImpl) UncheckedSet(reverse bool, edgeID int, eia EdgeIntAccess, value int32) {
 	if e.NegateReverseDir {
 		if reverse {
 			reverse = false
@@ -152,41 +139,28 @@ func (e *IntEncodedValueImpl) UncheckedSet(reverse bool, edgeID int, edgeIntAcce
 
 	value -= e.MinStorableValue
 	if reverse {
-		flags := edgeIntAccess.GetInt(edgeID, e.BwdDataIndex)
+		flags := eia.GetInt(edgeID, e.BwdDataIndex)
 		flags &= ^e.BwdMask
-		edgeIntAccess.SetInt(edgeID, e.BwdDataIndex, flags|(value<<e.BwdShift))
+		eia.SetInt(edgeID, e.BwdDataIndex, flags|(value<<e.BwdShift))
 	} else {
-		flags := edgeIntAccess.GetInt(edgeID, e.FwdDataIndex)
+		flags := eia.GetInt(edgeID, e.FwdDataIndex)
 		flags &= ^e.FwdMask
-		edgeIntAccess.SetInt(edgeID, e.FwdDataIndex, flags|(value<<e.FwdShift))
+		eia.SetInt(edgeID, e.FwdDataIndex, flags|(value<<e.FwdShift))
 	}
 }
 
-// GetInt retrieves the stored integer value.
-func (e *IntEncodedValueImpl) GetInt(reverse bool, edgeID int, edgeIntAccess EdgeIntAccess) int32 {
+func (e *IntEncodedValueImpl) GetInt(reverse bool, edgeID int, eia EdgeIntAccess) int32 {
 	if e.StoreTwoDir && reverse {
-		flags := edgeIntAccess.GetInt(edgeID, e.BwdDataIndex)
+		flags := eia.GetInt(edgeID, e.BwdDataIndex)
 		return e.MinStorableValue + int32(uint32(flags&e.BwdMask)>>uint(e.BwdShift))
 	}
-	flags := edgeIntAccess.GetInt(edgeID, e.FwdDataIndex)
+	flags := eia.GetInt(edgeID, e.FwdDataIndex)
 	if e.NegateReverseDir && reverse {
 		return -(e.MinStorableValue + int32(uint32(flags&e.FwdMask)>>uint(e.FwdShift)))
 	}
 	return e.MinStorableValue + int32(uint32(flags&e.FwdMask)>>uint(e.FwdShift))
 }
 
-// GetMaxStorableInt returns the maximum value accepted by SetInt.
-func (e *IntEncodedValueImpl) GetMaxStorableInt() int32 {
-	return e.MaxStorableValue
-}
-
-// GetMinStorableInt returns the minimum value accepted by SetInt.
-func (e *IntEncodedValueImpl) GetMinStorableInt() int32 {
-	return e.MinStorableValue
-}
-
-// GetMaxOrMaxStorableInt returns the maximum value that has been set,
-// or the physical storage limit if no value has been set yet.
 func (e *IntEncodedValueImpl) GetMaxOrMaxStorableInt() int32 {
 	if e.MaxValue == math.MinInt32 {
 		return e.MaxStorableValue
@@ -194,24 +168,14 @@ func (e *IntEncodedValueImpl) GetMaxOrMaxStorableInt() int32 {
 	return e.MaxValue
 }
 
-// String returns the name of this encoded value.
-func (e *IntEncodedValueImpl) String() string {
-	return e.Name
-}
-
 // IsValidEncodedValue reports whether name is valid for an encoded value.
-// Valid names consist of lower-case ASCII letters, digits, and single
-// underscores (no leading underscore, no consecutive underscores).
-// Names must be at least 2 characters, must not start with "in_" or
-// "backward_", and must not be a Java keyword.
+// Valid names: lowercase ASCII letters, digits, and single underscores.
+// Names must be >= 2 chars, not start with "in_" or "backward_", and not be a Java keyword.
 func IsValidEncodedValue(name string) bool {
 	if len(name) < 2 {
 		return false
 	}
-	if strings.HasPrefix(name, "in_") {
-		return false
-	}
-	if strings.HasPrefix(name, "backward_") {
+	if strings.HasPrefix(name, "in_") || strings.HasPrefix(name, "backward_") {
 		return false
 	}
 	if name[0] < 'a' || name[0] > 'z' {
@@ -239,8 +203,6 @@ func IsValidEncodedValue(name string) bool {
 	return true
 }
 
-// isJavaKeyword reports whether name is a reserved keyword, boolean literal,
-// or null literal in Java 11 (matching SourceVersion.isKeyword).
 func isJavaKeyword(name string) bool {
 	switch name {
 	case "abstract", "assert", "boolean", "break", "byte",
@@ -253,9 +215,7 @@ func isJavaKeyword(name string) bool {
 		"return", "short", "static", "strictfp", "super",
 		"switch", "synchronized", "this", "throw", "throws",
 		"transient", "try", "void", "volatile", "while",
-		// Boolean and null literals.
 		"true", "false", "null",
-		// Underscore (reserved since Java 9).
 		"_":
 		return true
 	}
