@@ -22,6 +22,7 @@ The goal: beautiful, idiomatic, and performant Go code needed to make that miles
 * when in plan mode, do not write code as part of the plan
 * Before starting a new milestone, run `/parity-check <package>` on the target package to understand the gap
 * After completing a milestone, run `/parity-check <package>` again to verify coverage
+* After completing a milestone, update beads (`bd close <id> -r "reason"`) based on the parity check results
 
 
 
