@@ -1,4 +1,4 @@
-SHELL := /usr/bin/env bash
+SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .ONESHELL:
 
