@@ -3,26 +3,32 @@ package ev
 import (
 	"fmt"
 	"math"
-	"unicode"
+	"strings"
+)
+
+// Compile-time interface compliance checks.
+var (
+	_ IntEncodedValue = (*IntEncodedValueImpl)(nil)
+	_ fmt.Stringer    = (*IntEncodedValueImpl)(nil)
 )
 
 // IntEncodedValueImpl stores an integer value using a fixed number of bits
 // within an int32 array. It supports optional two-direction storage and
 // negate-reverse-direction mode.
 type IntEncodedValueImpl struct {
-	Name                  string `json:"name"`
-	Bits                  int    `json:"bits"`
-	MinStorableValue      int32  `json:"min_storable_value"`
-	MaxStorableValue      int32  `json:"max_storable_value"`
-	MaxValue              int32  `json:"max_value"`
-	NegateReverseDir      bool   `json:"negate_reverse_direction"`
-	StoreTwoDir           bool   `json:"store_two_directions"`
-	FwdDataIndex          int    `json:"fwd_data_index"`
-	BwdDataIndex          int    `json:"bwd_data_index"`
-	FwdShift              int    `json:"fwd_shift"`
-	BwdShift              int    `json:"bwd_shift"`
-	FwdMask               int32  `json:"fwd_mask"`
-	BwdMask               int32  `json:"bwd_mask"`
+	Name             string `json:"name"`
+	Bits             int    `json:"bits"`
+	MinStorableValue int32  `json:"min_storable_value"`
+	MaxStorableValue int32  `json:"max_storable_value"`
+	MaxValue         int32  `json:"max_value"`
+	NegateReverseDir bool   `json:"negate_reverse_direction"`
+	StoreTwoDir      bool   `json:"store_two_directions"`
+	FwdDataIndex     int    `json:"fwd_data_index"`
+	BwdDataIndex     int    `json:"bwd_data_index"`
+	FwdShift         int    `json:"fwd_shift"`
+	BwdShift         int    `json:"bwd_shift"`
+	FwdMask          int32  `json:"fwd_mask"`
+	BwdMask          int32  `json:"bwd_mask"`
 }
 
 // NewIntEncodedValueImpl creates an IntEncodedValueImpl with no minimum value
@@ -47,16 +53,14 @@ func NewIntEncodedValueImplFull(name string, bits int, minStorableValue int32, n
 		panic(fmt.Sprintf("%s: negating value for reverse direction only works for minValue == 0 and !storeTwoDirections but was minValue=%d, storeTwoDirections=%v",
 			name, minStorableValue, storeTwoDirections))
 	}
+	if minStorableValue == math.MinInt32 {
+		panic(fmt.Sprintf("%d is not allowed for minValue", math.MinInt32))
+	}
 
 	max := int32((1 << bits) - 1)
 	minSV := minStorableValue
 	if negateReverseDirection {
 		minSV = -max
-	}
-	maxSV := max + minStorableValue
-
-	if minStorableValue == math.MinInt32 {
-		panic(fmt.Sprintf("%d is not allowed for minValue", math.MinInt32))
 	}
 
 	effectiveBits := bits
@@ -70,7 +74,7 @@ func NewIntEncodedValueImplFull(name string, bits int, minStorableValue int32, n
 		Bits:             effectiveBits,
 		NegateReverseDir: negateReverseDirection,
 		MinStorableValue: minSV,
-		MaxStorableValue: maxSV,
+		MaxStorableValue: max + minStorableValue,
 		MaxValue:         math.MinInt32,
 		FwdShift:         -1,
 		BwdShift:         -1,
@@ -93,9 +97,6 @@ func (e *IntEncodedValueImpl) Init(init *InitializerConfig) int {
 		e.BwdMask = init.BitMask
 		e.BwdDataIndex = init.DataIndex
 		e.BwdShift = init.Shift
-	}
-
-	if e.StoreTwoDir {
 		return 2 * e.Bits
 	}
 	return e.Bits
@@ -124,7 +125,7 @@ func (e *IntEncodedValueImpl) SetInt(reverse bool, edgeID int, edgeIntAccess Edg
 
 func (e *IntEncodedValueImpl) checkValue(value int32) {
 	if !e.isInitialized() {
-		panic(fmt.Sprintf("EncodedValue %s not initialized", e.GetName()))
+		panic(fmt.Sprintf("EncodedValue %s not initialized", e.Name))
 	}
 	if value > e.MaxStorableValue {
 		panic(fmt.Sprintf("%s value too large for encoding: %d, maxValue:%d", e.Name, value, e.MaxStorableValue))
@@ -142,7 +143,7 @@ func (e *IntEncodedValueImpl) UncheckedSet(reverse bool, edgeID int, edgeIntAcce
 			value = -value
 		}
 	} else if reverse && !e.StoreTwoDir {
-		panic(fmt.Sprintf("%s: value for reverse direction would overwrite forward direction. Enable storeTwoDirections for this EncodedValue or don't use setReverse", e.GetName()))
+		panic(fmt.Sprintf("%s: value for reverse direction would overwrite forward direction. Enable storeTwoDirections for this EncodedValue or don't use setReverse", e.Name))
 	}
 
 	if value > e.MaxValue {
@@ -188,57 +189,58 @@ func (e *IntEncodedValueImpl) GetMinStorableInt() int32 {
 // or the physical storage limit if no value has been set yet.
 func (e *IntEncodedValueImpl) GetMaxOrMaxStorableInt() int32 {
 	if e.MaxValue == math.MinInt32 {
-		return e.GetMaxStorableInt()
+		return e.MaxStorableValue
 	}
 	return e.MaxValue
 }
 
 // String returns the name of this encoded value.
 func (e *IntEncodedValueImpl) String() string {
-	return e.GetName()
+	return e.Name
 }
 
-// IsValidEncodedValue checks if a name is valid for an encoded value.
-// Valid names use lower case letters, digits, and single underscores.
+// IsValidEncodedValue reports whether name is valid for an encoded value.
+// Valid names consist of lower-case ASCII letters, digits, and single
+// underscores (no leading underscore, no consecutive underscores).
+// Names must be at least 2 characters, must not start with "in_" or
+// "backward_", and must not be a Java keyword.
 func IsValidEncodedValue(name string) bool {
 	if len(name) < 2 {
 		return false
 	}
-	if len(name) >= 3 && name[:3] == "in_" {
+	if strings.HasPrefix(name, "in_") {
 		return false
 	}
-	if len(name) >= 9 && name[:9] == "backward_" {
+	if strings.HasPrefix(name, "backward_") {
 		return false
 	}
-	if !isLowerLetter(rune(name[0])) {
+	if name[0] < 'a' || name[0] > 'z' {
 		return false
 	}
 	if isJavaKeyword(name) {
 		return false
 	}
 
-	underscoreCount := 0
+	prevUnderscore := false
 	for i := 1; i < len(name); i++ {
-		c := rune(name[i])
-		if c == '_' {
-			if underscoreCount > 0 {
+		c := name[i]
+		switch {
+		case c == '_':
+			if prevUnderscore {
 				return false
 			}
-			underscoreCount++
-		} else if !isLowerLetter(c) && !unicode.IsDigit(c) {
+			prevUnderscore = true
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+			prevUnderscore = false
+		default:
 			return false
-		} else {
-			underscoreCount = 0
 		}
 	}
 	return true
 }
 
-func isLowerLetter(c rune) bool {
-	return c >= 'a' && c <= 'z'
-}
-
-// isJavaKeyword matches Java's SourceVersion.isKeyword for parity.
+// isJavaKeyword reports whether name is a reserved keyword, boolean literal,
+// or null literal in Java 11 (matching SourceVersion.isKeyword).
 func isJavaKeyword(name string) bool {
 	switch name {
 	case "abstract", "assert", "boolean", "break", "byte",
@@ -251,7 +253,10 @@ func isJavaKeyword(name string) bool {
 		"return", "short", "static", "strictfp", "super",
 		"switch", "synchronized", "this", "throw", "throws",
 		"transient", "try", "void", "volatile", "while",
-		"true", "false", "null":
+		// Boolean and null literals.
+		"true", "false", "null",
+		// Underscore (reserved since Java 9).
+		"_":
 		return true
 	}
 	return false

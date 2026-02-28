@@ -2,6 +2,12 @@ package util
 
 import "gohopper/core/routing/ev"
 
+// Compile-time interface compliance checks for sentinel types.
+var (
+	_ ev.BooleanEncodedValue = (*unfavoredBoolEV)(nil)
+	_ ev.BooleanEncodedValue = (*reverseStateBoolEV)(nil)
+)
+
 // UnfavoredEdge is a sentinel BooleanEncodedValue that always returns false
 // and panics on mutation or Init.
 var UnfavoredEdge ev.BooleanEncodedValue = &unfavoredBoolEV{}
@@ -88,13 +94,13 @@ type EdgeIteratorState interface {
 	GetName() string
 
 	// SetKeyValues stores key-value pairs in the edge storage.
-	SetKeyValues(entries map[string]interface{}) EdgeIteratorState
+	SetKeyValues(entries map[string]any) EdgeIteratorState
 
 	// GetKeyValues returns all key-value pairs for both directions.
-	GetKeyValues() map[string]interface{}
+	GetKeyValues() map[string]any
 
 	// GetValue returns the first value for the given key in this direction.
-	GetValue(key string) interface{}
+	GetValue(key string) any
 
 	// Detach clones this edge state. If reverse is true, the clone has
 	// reversed base/adj nodes, flags, and way geometry.
@@ -104,28 +110,37 @@ type EdgeIteratorState interface {
 	CopyPropertiesFrom(e EdgeIteratorState) EdgeIteratorState
 }
 
-// --- sentinel implementations ---
-
+// unfavoredBoolEV is a sentinel BooleanEncodedValue that always returns false.
 type unfavoredBoolEV struct{}
 
 func (u *unfavoredBoolEV) Init(_ *ev.InitializerConfig) int {
 	panic("cannot happen for 'unfavored' BooleanEncodedValue")
 }
-func (u *unfavoredBoolEV) GetName() string              { return "unfavored" }
-func (u *unfavoredBoolEV) IsStoreTwoDirections() bool    { return false }
+
+func (u *unfavoredBoolEV) GetName() string { return "unfavored" }
+
+func (u *unfavoredBoolEV) IsStoreTwoDirections() bool { return false }
+
 func (u *unfavoredBoolEV) GetBool(_ bool, _ int, _ ev.EdgeIntAccess) bool { return false }
+
 func (u *unfavoredBoolEV) SetBool(_ bool, _ int, _ ev.EdgeIntAccess, _ bool) {
 	panic("state of 'unfavored' cannot be modified")
 }
 
+// reverseStateBoolEV is a sentinel BooleanEncodedValue that returns the
+// reverse flag itself.
 type reverseStateBoolEV struct{}
 
 func (r *reverseStateBoolEV) Init(_ *ev.InitializerConfig) int {
 	panic("cannot happen for 'reverse' BooleanEncodedValue")
 }
-func (r *reverseStateBoolEV) GetName() string              { return "reverse" }
-func (r *reverseStateBoolEV) IsStoreTwoDirections() bool    { return false }
+
+func (r *reverseStateBoolEV) GetName() string { return "reverse" }
+
+func (r *reverseStateBoolEV) IsStoreTwoDirections() bool { return false }
+
 func (r *reverseStateBoolEV) GetBool(reverse bool, _ int, _ ev.EdgeIntAccess) bool { return reverse }
+
 func (r *reverseStateBoolEV) SetBool(_ bool, _ int, _ ev.EdgeIntAccess, _ bool) {
 	panic("state of 'reverse' cannot be modified")
 }
