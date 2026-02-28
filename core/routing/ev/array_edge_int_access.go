@@ -1,10 +1,7 @@
 package ev
 
-import "math"
-
 // ArrayEdgeIntAccess stores edge integer values in a dynamically-growing
 // slice, laid out as intsPerEdge consecutive int32 slots per edge.
-// Primarily used in tests.
 type ArrayEdgeIntAccess struct {
 	intsPerEdge int
 	arr         []int32
@@ -19,7 +16,7 @@ func NewArrayEdgeIntAccess(intsPerEdge int) *ArrayEdgeIntAccess {
 // NewArrayEdgeIntAccessFromBytes creates a new ArrayEdgeIntAccess with enough
 // int32 slots to hold the given number of bytes per edge.
 func NewArrayEdgeIntAccessFromBytes(bytes int) *ArrayEdgeIntAccess {
-	return NewArrayEdgeIntAccess(int(math.Ceil(float64(bytes) / 4)))
+	return NewArrayEdgeIntAccess((bytes + 3) / 4)
 }
 
 func (a *ArrayEdgeIntAccess) GetInt(edgeID, index int) int32 {
