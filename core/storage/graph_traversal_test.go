@@ -894,3 +894,140 @@ func Test8AndMoreBytesForEdgeFlags(t *testing.T) {
 	assertFalse(t, edgeIter.GetBool(access1Enc))
 	assertTrue(t, edgeIter.GetReverseBool(access1Enc))
 }
+
+// --- Wave 4: Remaining BaseGraphTest ports ---
+
+func TestSaveAndFreeze(t *testing.T) {
+	dir := testDir(t)
+
+	// Create graph, add an edge, freeze, flush, close
+	d1 := NewRAMDirectory(dir, true).Init().(*GHDirectory)
+	g1 := NewBaseGraph(d1, true, false, -1, 4)
+	g1.Create(100)
+	g1.Edge(1, 0)
+	g1.Freeze()
+	g1.Flush()
+	g1.Close()
+	d1.Close()
+
+	// Reload and verify frozen state and node count
+	d2 := NewRAMDirectory(dir, true).Init().(*GHDirectory)
+	g2 := NewBaseGraph(d2, true, false, -1, 4)
+	if !g2.LoadExisting() {
+		t.Fatal("expected LoadExisting to return true")
+	}
+	assertEqual(t, 2, g2.GetNodes())
+	assertTrue(t, g2.IsFrozen())
+	g2.Close()
+	d2.Close()
+}
+
+func TestDoThrowExceptionIfDimDoesNotMatch(t *testing.T) {
+	dir := testDir(t)
+
+	// Create a 2D graph, flush, close
+	d1 := NewRAMDirectory(dir, true).Init().(*GHDirectory)
+	g1 := NewBaseGraph(d1, false, false, -1, 4)
+	g1.Create(1000)
+	g1.Flush()
+	g1.Close()
+	d1.Close()
+
+	// Try to reload as 3D — should panic
+	d2 := NewRAMDirectory(dir, true).Init().(*GHDirectory)
+	g2 := NewBaseGraph(d2, true, false, -1, 4)
+	assertPanics(t, func() { g2.LoadExisting() })
+	d2.Close()
+}
+
+func TestMultipleDecoupledEdges(t *testing.T) {
+	tg := newTestGraph(t)
+	g := tg.graph
+	g.Edge(0, 1).SetDistance(10).SetBoolBothDir(tg.carAccessEnc, true, true)
+	g.Edge(1, 2).SetDistance(10).SetBoolBothDir(tg.carAccessEnc, true, true)
+
+	edge0 := g.GetEdgeIteratorState(0, math.MinInt32)
+	edge1 := g.GetEdgeIteratorState(1, math.MinInt32)
+	edge0.SetBoolBothDir(tg.carAccessEnc, true, false)
+	edge1.SetBoolBothDir(tg.carAccessEnc, false, true)
+
+	assertFalse(t, edge1.GetBool(tg.carAccessEnc))
+	assertTrue(t, edge1.GetReverseBool(tg.carAccessEnc))
+
+	// edge0 flags should not be affected by edge1 mutation
+	assertTrue(t, edge0.GetBool(tg.carAccessEnc))
+	assertFalse(t, edge0.GetReverseBool(tg.carAccessEnc))
+}
+
+func TestDecoupledEdgeIteratorStates(t *testing.T) {
+	tg := newTestGraph(t)
+	g := tg.graph
+
+	flags12 := g.Store.CreateEdgeFlags()
+	flags12.Ints[0] = 12
+	edge12 := g.Edge(1, 2).SetDistance(10).SetBoolBothDir(tg.carAccessEnc, true, true)
+	edge12.(*EdgeIteratorStateImpl).SetFlags(flags12)
+
+	flags13 := g.Store.CreateEdgeFlags()
+	flags13.Ints[0] = 13
+	edge13 := g.Edge(1, 3).SetDistance(10).SetBoolBothDir(tg.carAccessEnc, true, true)
+	edge13.(*EdgeIteratorStateImpl).SetFlags(flags13)
+
+	iter := g.CreateEdgeExplorer(routingutil.AllEdges).SetBaseNode(1)
+	assertTrue(t, iter.Next())
+	detached := iter.Detach(false)
+
+	assertTrue(t, iter.Next())
+	newFlags := g.Store.CreateEdgeFlags()
+	newFlags.Ints[0] = 44
+	iter.(*edgeIteratorImpl).SetFlags(newFlags)
+
+	readBack := iter.(*edgeIteratorImpl).GetFlags()
+	assertEqual(t, 44, int(readBack.Ints[0]))
+	detachedFlags := detached.(*EdgeIteratorStateImpl).GetFlags()
+	assertEqual(t, 13, int(detachedFlags.Ints[0]))
+}
+
+func TestOutOfBounds(t *testing.T) {
+	tg := newTestGraph(t)
+	g := tg.graph
+	assertPanics(t, func() { g.GetEdgeIteratorState(0, math.MinInt32) })
+}
+
+func TestSetGetFlagsRaw(t *testing.T) {
+	g := NewBaseGraphBuilder(4).CreateGraph()
+	defer g.Close()
+	edge := g.Edge(0, 1)
+	impl := edge.(*EdgeIteratorStateImpl)
+	flags := g.Store.CreateEdgeFlags()
+	flags.Ints[0] = 10
+	impl.SetFlags(flags)
+	assertEqual(t, 10, int(impl.GetFlags().Ints[0]))
+
+	flags.Ints[0] = 9
+	impl.SetFlags(flags)
+	assertEqual(t, 9, int(impl.GetFlags().Ints[0]))
+}
+
+func TestSetGetFlags(t *testing.T) {
+	rcEnc := ev.RoadClassCreate()
+	cfg := ev.NewInitializerConfig()
+	rcEnc.Init(cfg)
+
+	bytesForFlags := cfg.GetRequiredBytes()
+	g := NewBaseGraphBuilder(bytesForFlags).CreateGraph()
+	defer g.Close()
+
+	edge := g.Edge(0, 1)
+	rcEnc.SetEnum(false, edge.GetEdge(), g.Store, ev.RoadClassBridleway)
+	got := rcEnc.GetEnum(false, edge.GetEdge(), g.Store)
+	if got != ev.RoadClassBridleway {
+		t.Fatalf("expected RoadClassBridleway (%d), got %d", ev.RoadClassBridleway, got)
+	}
+
+	rcEnc.SetEnum(false, edge.GetEdge(), g.Store, ev.RoadClassCorridor)
+	got = rcEnc.GetEnum(false, edge.GetEdge(), g.Store)
+	if got != ev.RoadClassCorridor {
+		t.Fatalf("expected RoadClassCorridor (%d), got %d", ev.RoadClassCorridor, got)
+	}
+}

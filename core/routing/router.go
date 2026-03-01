@@ -13,11 +13,11 @@ import (
 
 type Router struct {
 	graph        *storage.BaseGraph
-	locationIdx  *index.LocationIndex
+	locationIdx  index.LocationIndex
 	routerConfig RouterConfig
 }
 
-func NewRouter(graph *storage.BaseGraph, locationIdx *index.LocationIndex, routerConfig RouterConfig) *Router {
+func NewRouter(graph *storage.BaseGraph, locationIdx index.LocationIndex, routerConfig RouterConfig) *Router {
 	return &Router{graph: graph, locationIdx: locationIdx, routerConfig: routerConfig}
 }
 

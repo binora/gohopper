@@ -21,7 +21,7 @@ var validProfileName = regexp.MustCompile(`^[a-z0-9_-]+$`)
 type GraphHopper struct {
 	profilesByName map[string]config.Profile
 	graph          *storage.BaseGraph
-	locationIndex  *index.LocationIndex
+	locationIndex  index.LocationIndex
 	routerConfig   routing.RouterConfig
 	router         *routing.Router
 	ghLocation     string
@@ -90,7 +90,7 @@ func (g *GraphHopper) GetBaseGraph() *storage.BaseGraph {
 	return g.graph
 }
 
-func (g *GraphHopper) GetLocationIndex() *index.LocationIndex {
+func (g *GraphHopper) GetLocationIndex() index.LocationIndex {
 	return g.locationIndex
 }
 
