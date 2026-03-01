@@ -168,6 +168,15 @@ func (tc *TurnCostStorage) GetBool(na NodeAccess, bev ev.BooleanEncodedValue, fr
 	return bev.GetBool(false, idx, &tcEdgeIntAccess{tc})
 }
 
+// SetBool stores a turn cost boolean value for the given edges and via node.
+func (tc *TurnCostStorage) SetBool(na NodeAccess, bev ev.BooleanEncodedValue, fromEdge, viaNode, toEdge int, value bool) {
+	idx := tc.FindOrCreateEntry(na, fromEdge, viaNode, toEdge)
+	if idx < 0 {
+		panic("invalid turn cost entry index")
+	}
+	bev.SetBool(false, idx, &tcEdgeIntAccess{tc}, value)
+}
+
 // SetDecimal stores a turn cost decimal value for the given edges and via node.
 func (tc *TurnCostStorage) SetDecimal(na NodeAccess, dev ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int, cost float64) {
 	idx := tc.FindOrCreateEntry(na, fromEdge, viaNode, toEdge)

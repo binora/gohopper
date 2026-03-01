@@ -249,6 +249,31 @@ func (em *EncodingManager) GetTurnEncodedValues() []ev.EncodedValue {
 	return out
 }
 
+// GetTurnEncodedValue returns the turn-cost encoded value for the given key.
+// Panics if not found.
+func (em *EncodingManager) GetTurnEncodedValue(key string) ev.EncodedValue {
+	v, ok := em.turnEVIndex[key]
+	if !ok {
+		panic(fmt.Sprintf("Cannot find Turn-EncodedValue '%s' in collection: %s", key, em.turnEncodedValueKeys()))
+	}
+	return v
+}
+
+// GetTurnBooleanEncodedValue returns the turn-cost boolean EV for the given key.
+func (em *EncodingManager) GetTurnBooleanEncodedValue(key string) ev.BooleanEncodedValue {
+	return em.GetTurnEncodedValue(key).(ev.BooleanEncodedValue)
+}
+
+// GetTurnDecimalEncodedValue returns the turn-cost decimal EV for the given key.
+func (em *EncodingManager) GetTurnDecimalEncodedValue(key string) ev.DecimalEncodedValue {
+	return em.GetTurnEncodedValue(key).(ev.DecimalEncodedValue)
+}
+
+// GetTurnIntEncodedValue returns the turn-cost int EV for the given key.
+func (em *EncodingManager) GetTurnIntEncodedValue(key string) ev.IntEncodedValue {
+	return em.GetTurnEncodedValue(key).(ev.IntEncodedValue)
+}
+
 // NeedsTurnCostsSupport reports whether any turn cost EVs were registered.
 func (em *EncodingManager) NeedsTurnCostsSupport() bool {
 	return em.IntsForTurnCostFlags > 0
@@ -308,6 +333,14 @@ func (em *EncodingManager) String() string {
 func (em *EncodingManager) encodedValueKeys() string {
 	keys := make([]string, 0, len(em.encodedValueIndex))
 	for k := range em.encodedValueIndex {
+		keys = append(keys, k)
+	}
+	return "[" + strings.Join(keys, ", ") + "]"
+}
+
+func (em *EncodingManager) turnEncodedValueKeys() string {
+	keys := make([]string, 0, len(em.turnEVIndex))
+	for k := range em.turnEVIndex {
 		keys = append(keys, k)
 	}
 	return "[" + strings.Join(keys, ", ") + "]"

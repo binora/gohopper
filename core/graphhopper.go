@@ -4,12 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
-	"time"
 
 	"gohopper/core/config"
 	"gohopper/core/routing"
+	routingutil "gohopper/core/routing/util"
 	"gohopper/core/storage"
 	"gohopper/core/storage/index"
 	"gohopper/core/util"
@@ -19,15 +18,16 @@ import (
 var validProfileName = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 type GraphHopper struct {
-	profilesByName map[string]config.Profile
-	graph          *storage.BaseGraph
-	locationIndex  index.LocationIndex
-	routerConfig   routing.RouterConfig
-	router         *routing.Router
-	ghLocation     string
-	fullyLoaded    bool
-	properties     map[string]string
-	initErr        error
+	profilesByName  map[string]config.Profile
+	graph           *storage.BaseGraph
+	locationIndex   index.LocationIndex
+	routerConfig    routing.RouterConfig
+	router          *routing.Router
+	encodingManager *routingutil.EncodingManager
+	ghLocation      string
+	fullyLoaded     bool
+	properties      map[string]string
+	initErr         error
 }
 
 func NewGraphHopper() *GraphHopper {
@@ -58,21 +58,56 @@ func (g *GraphHopper) ImportOrLoad() error {
 	if g.initErr != nil {
 		return g.initErr
 	}
-	if g.ghLocation == "" {
-		g.ghLocation = "graph-cache"
-	}
-	if err := os.MkdirAll(g.ghLocation, 0o755); err != nil {
+	if err := g.load(); err != nil {
 		return err
 	}
-	// This placeholder marker lets contributors see where cache compatibility work plugs in.
-	markerPath := filepath.Join(g.ghLocation, "gohopper.marker")
-	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
-		if err := os.WriteFile(markerPath, []byte("placeholder cache marker; replace with GH11 binary-compatible cache files\n"), 0o644); err != nil {
-			return err
-		}
+	return nil
+}
+
+// load attempts to load an existing graph cache from disk.
+// Returns nil if there is nothing to load (no directory or no properties file).
+// Returns an error if the location is invalid, the graph is already loaded,
+// or loading fails.
+func (g *GraphHopper) load() error {
+	if g.ghLocation == "" {
+		return errors.New("GraphHopperLocation is not specified. Call Init before")
 	}
-	g.properties["datareader.import.date"] = time.Now().UTC().Format(time.RFC3339)
-	g.properties["datareader.data.date"] = ""
+	if g.fullyLoaded {
+		return errors.New("graph is already successfully loaded")
+	}
+
+	info, err := os.Stat(g.ghLocation)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing to load yet — no graph cache directory.
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("GraphHopperLocation cannot be an existing file. Has to be either non-existing or a folder: %s", g.ghLocation)
+	}
+
+	dir := storage.NewGHDirectory(g.ghLocation, storage.DATypeRAMStore)
+	props := storage.NewStorableProperties(dir)
+	if !props.LoadExisting() {
+		// The directory exists but has no properties file — treat as no prior import.
+		return nil
+	}
+
+	em := routingutil.FromProperties(props)
+	g.encodingManager = em
+
+	bg := storage.NewBaseGraphBuilder(em.BytesForFlags).
+		SetDir(dir).
+		SetWithTurnCosts(em.NeedsTurnCostsSupport()).
+		Build()
+
+	if !bg.LoadExisting() {
+		return fmt.Errorf("could not load existing graph from: %s", g.ghLocation)
+	}
+
+	g.graph = bg
 	g.fullyLoaded = true
 	return nil
 }
@@ -92,6 +127,10 @@ func (g *GraphHopper) GetBaseGraph() *storage.BaseGraph {
 
 func (g *GraphHopper) GetLocationIndex() index.LocationIndex {
 	return g.locationIndex
+}
+
+func (g *GraphHopper) GetEncodingManager() *routingutil.EncodingManager {
+	return g.encodingManager
 }
 
 func (g *GraphHopper) GetProfiles() []config.Profile {

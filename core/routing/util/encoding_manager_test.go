@@ -2,6 +2,7 @@ package util_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"gohopper/core/routing/ev"
@@ -108,4 +109,47 @@ func TestPutAndFromProperties(t *testing.T) {
 			t.Fatalf("EV[%d]: expected name %q, got %q", i, orig.GetName(), rest.GetName())
 		}
 	}
+}
+
+func TestEncodingManager_GetTurnBooleanEncodedValue(t *testing.T) {
+	turnEV := ev.NewSimpleBooleanEncodedValue("turn_restriction")
+	em := routingutil.Start().
+		AddTurnCostEncodedValue(turnEV).
+		Build()
+
+	bev := em.GetTurnBooleanEncodedValue("turn_restriction")
+	if bev.GetName() != "turn_restriction" {
+		t.Fatalf("expected 'turn_restriction', got %q", bev.GetName())
+	}
+}
+
+func TestEncodingManager_GetTurnDecimalEncodedValue(t *testing.T) {
+	turnEV := ev.NewDecimalEncodedValueImpl("turn_cost", 5, 5, false)
+	em := routingutil.Start().
+		AddTurnCostEncodedValue(turnEV).
+		Build()
+
+	dev := em.GetTurnDecimalEncodedValue("turn_cost")
+	if dev.GetName() != "turn_cost" {
+		t.Fatalf("expected 'turn_cost', got %q", dev.GetName())
+	}
+}
+
+func TestEncodingManager_GetTurnEncodedValue_NotFound(t *testing.T) {
+	em := routingutil.Start().Build()
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for missing turn EV")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("expected string panic, got %T: %v", r, r)
+		}
+		if !strings.Contains(msg, "Cannot find Turn-EncodedValue") {
+			t.Fatalf("unexpected panic message: %s", msg)
+		}
+	}()
+	em.GetTurnEncodedValue("nonexistent")
 }
