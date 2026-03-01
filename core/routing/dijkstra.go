@@ -19,15 +19,8 @@ type Dijkstra struct {
 	to       int
 }
 
-// NewDijkstra creates a new Dijkstra algorithm instance.
 func NewDijkstra(graph storage.Graph, w weighting.Weighting, tMode routingutil.TraversalMode) *Dijkstra {
-	size := graph.GetNodes() / 10
-	if size < 200 {
-		size = 200
-	}
-	if size > 2000 {
-		size = 2000
-	}
+	size := min(max(graph.GetNodes()/10, 200), 2000)
 	d := &Dijkstra{
 		AbstractRoutingAlgorithm: NewAbstractRoutingAlgorithm(graph, w, tMode),
 		to:                       -1,
@@ -41,7 +34,6 @@ func (d *Dijkstra) initCollections(size int) {
 	d.fromMap = make(map[int]*SPTEntry, size)
 }
 
-// CalcPath calculates the best path between from and to.
 func (d *Dijkstra) CalcPath(from, to int) *Path {
 	d.CheckAlreadyRun()
 	d.SetupFinishTime()
@@ -55,7 +47,6 @@ func (d *Dijkstra) CalcPath(from, to int) *Path {
 	return d.extractPath()
 }
 
-// CalcPaths returns CalcPath wrapped in a single-element slice.
 func (d *Dijkstra) CalcPaths(from, to int) []*Path {
 	return DefaultCalcPaths(d, from, to)
 }
@@ -116,9 +107,8 @@ func (d *Dijkstra) extractPath() *Path {
 }
 
 // updateBestPath is a no-op hook for subclasses (e.g., alternative routes).
-func (d *Dijkstra) updateBestPath(_ interface{}, _ *SPTEntry, _ int) {}
+func (d *Dijkstra) updateBestPath(_ any, _ *SPTEntry, _ int) {}
 
-// GetName returns the algorithm name.
 func (d *Dijkstra) GetName() string {
 	return AlgoDijkstra
 }

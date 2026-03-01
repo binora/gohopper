@@ -13,9 +13,9 @@ const (
 	AlgoAStarBi           = "astarbi"
 	AlgoDijkstraOneToMany = "dijkstra_one_to_many"
 	AlgoAStar             = "astar"
+	AlgoAltRoute          = "alternative_route"
 )
 
-// AlgorithmOptions holds configuration for routing algorithm creation.
 type AlgorithmOptions struct {
 	Algorithm       string
 	TraversalMode   routingutil.TraversalMode
@@ -24,8 +24,6 @@ type AlgorithmOptions struct {
 	Hints           map[string]string
 }
 
-// NewAlgorithmOptions returns AlgorithmOptions with default values:
-// Algorithm="astarbi", NodeBased traversal, unlimited visited nodes, unlimited timeout.
 func NewAlgorithmOptions() AlgorithmOptions {
 	return AlgorithmOptions{
 		Algorithm:       AlgoAStarBi,

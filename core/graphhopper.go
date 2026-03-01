@@ -58,16 +58,9 @@ func (g *GraphHopper) ImportOrLoad() error {
 	if g.initErr != nil {
 		return g.initErr
 	}
-	if err := g.load(); err != nil {
-		return err
-	}
-	return nil
+	return g.load()
 }
 
-// load attempts to load an existing graph cache from disk.
-// Returns nil if there is nothing to load (no directory or no properties file).
-// Returns an error if the location is invalid, the graph is already loaded,
-// or loading fails.
 func (g *GraphHopper) load() error {
 	if g.ghLocation == "" {
 		return errors.New("GraphHopperLocation is not specified. Call Init before")

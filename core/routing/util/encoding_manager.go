@@ -19,7 +19,6 @@ type PropertyStore interface {
 }
 
 // EncodingManager manages encoded values for edges and turn costs.
-// It implements ev.EncodedValueLookup.
 type EncodingManager struct {
 	encodedValues     []ev.EncodedValue
 	encodedValueIndex map[string]ev.EncodedValue
@@ -31,7 +30,6 @@ type EncodingManager struct {
 
 var _ ev.EncodedValueLookup = (*EncodingManager)(nil)
 
-// newEncodingManager creates an empty EncodingManager.
 func newEncodingManager() *EncodingManager {
 	return &EncodingManager{
 		encodedValueIndex: make(map[string]ev.EncodedValue),
@@ -39,7 +37,6 @@ func newEncodingManager() *EncodingManager {
 	}
 }
 
-// Start begins the builder process for an EncodingManager.
 func Start() *Builder {
 	return &Builder{
 		edgeConfig:     ev.NewInitializerConfig(),
@@ -49,13 +46,13 @@ func Start() *Builder {
 }
 
 // Builder accumulates encoded values and produces an EncodingManager.
+// Use Start() to create a new Builder.
 type Builder struct {
 	edgeConfig     *ev.InitializerConfig
 	turnCostConfig *ev.InitializerConfig
 	em             *EncodingManager
 }
 
-// Add registers an edge-level encoded value.
 func (b *Builder) Add(encodedValue ev.EncodedValue) *Builder {
 	b.checkNotBuiltAlready()
 	if b.em.HasEncodedValue(encodedValue.GetName()) {
@@ -70,7 +67,6 @@ func (b *Builder) Add(encodedValue ev.EncodedValue) *Builder {
 	return b
 }
 
-// AddTurnCostEncodedValue registers a turn-cost encoded value.
 func (b *Builder) AddTurnCostEncodedValue(turnCostEnc ev.EncodedValue) *Builder {
 	b.checkNotBuiltAlready()
 	if b.em.HasTurnEncodedValue(turnCostEnc.GetName()) {
@@ -91,7 +87,6 @@ func (b *Builder) checkNotBuiltAlready() {
 	}
 }
 
-// Build finalizes the builder and returns the immutable EncodingManager.
 func (b *Builder) Build() *EncodingManager {
 	b.checkNotBuiltAlready()
 	b.em.BytesForFlags = b.edgeConfig.GetRequiredBytes()
@@ -101,7 +96,6 @@ func (b *Builder) Build() *EncodingManager {
 	return result
 }
 
-// PutEncodingManagerIntoProperties serializes the EncodingManager into StorableProperties.
 func PutEncodingManagerIntoProperties(em *EncodingManager, props PropertyStore) {
 	props.Put("graph.em.version", ghutil.VersionEM)
 	props.Put("graph.em.bytes_for_flags", em.BytesForFlags)
@@ -110,7 +104,6 @@ func PutEncodingManagerIntoProperties(em *EncodingManager, props PropertyStore) 
 	props.Put("graph.turn_encoded_values", em.ToTurnEncodedValuesAsString())
 }
 
-// FromProperties reconstructs an EncodingManager from StorableProperties.
 func FromProperties(props PropertyStore) *EncodingManager {
 	if props.ContainsVersion() {
 		panic("The GraphHopper file format is not compatible with the data you are " +
@@ -193,27 +186,22 @@ func deserializeEncodedValueList(s string) []string {
 	return list
 }
 
-// HasEncodedValue reports whether an edge-level EV with the given key exists.
 func (em *EncodingManager) HasEncodedValue(key string) bool {
 	_, ok := em.encodedValueIndex[key]
 	return ok
 }
 
-// HasTurnEncodedValue reports whether a turn-cost EV with the given key exists.
 func (em *EncodingManager) HasTurnEncodedValue(key string) bool {
 	_, ok := em.turnEVIndex[key]
 	return ok
 }
 
-// GetEncodedValues returns all edge-level encoded values.
 func (em *EncodingManager) GetEncodedValues() []ev.EncodedValue {
 	out := make([]ev.EncodedValue, len(em.encodedValues))
 	copy(out, em.encodedValues)
 	return out
 }
 
-// GetEncodedValue returns the edge-level encoded value for the given key.
-// Panics if not found.
 func (em *EncodingManager) GetEncodedValue(key string) ev.EncodedValue {
 	v, ok := em.encodedValueIndex[key]
 	if !ok {
@@ -222,35 +210,28 @@ func (em *EncodingManager) GetEncodedValue(key string) ev.EncodedValue {
 	return v
 }
 
-// GetBooleanEncodedValue returns the boolean EV for the given key.
 func (em *EncodingManager) GetBooleanEncodedValue(key string) ev.BooleanEncodedValue {
 	return em.GetEncodedValue(key).(ev.BooleanEncodedValue)
 }
 
-// GetIntEncodedValue returns the int EV for the given key.
 func (em *EncodingManager) GetIntEncodedValue(key string) ev.IntEncodedValue {
 	return em.GetEncodedValue(key).(ev.IntEncodedValue)
 }
 
-// GetDecimalEncodedValue returns the decimal EV for the given key.
 func (em *EncodingManager) GetDecimalEncodedValue(key string) ev.DecimalEncodedValue {
 	return em.GetEncodedValue(key).(ev.DecimalEncodedValue)
 }
 
-// GetStringEncodedValue returns the string EV for the given key.
 func (em *EncodingManager) GetStringEncodedValue(key string) *ev.StringEncodedValue {
 	return em.GetEncodedValue(key).(*ev.StringEncodedValue)
 }
 
-// GetTurnEncodedValues returns all turn-cost encoded values.
 func (em *EncodingManager) GetTurnEncodedValues() []ev.EncodedValue {
 	out := make([]ev.EncodedValue, len(em.turnEncodedValues))
 	copy(out, em.turnEncodedValues)
 	return out
 }
 
-// GetTurnEncodedValue returns the turn-cost encoded value for the given key.
-// Panics if not found.
 func (em *EncodingManager) GetTurnEncodedValue(key string) ev.EncodedValue {
 	v, ok := em.turnEVIndex[key]
 	if !ok {
@@ -259,27 +240,22 @@ func (em *EncodingManager) GetTurnEncodedValue(key string) ev.EncodedValue {
 	return v
 }
 
-// GetTurnBooleanEncodedValue returns the turn-cost boolean EV for the given key.
 func (em *EncodingManager) GetTurnBooleanEncodedValue(key string) ev.BooleanEncodedValue {
 	return em.GetTurnEncodedValue(key).(ev.BooleanEncodedValue)
 }
 
-// GetTurnDecimalEncodedValue returns the turn-cost decimal EV for the given key.
 func (em *EncodingManager) GetTurnDecimalEncodedValue(key string) ev.DecimalEncodedValue {
 	return em.GetTurnEncodedValue(key).(ev.DecimalEncodedValue)
 }
 
-// GetTurnIntEncodedValue returns the turn-cost int EV for the given key.
 func (em *EncodingManager) GetTurnIntEncodedValue(key string) ev.IntEncodedValue {
 	return em.GetTurnEncodedValue(key).(ev.IntEncodedValue)
 }
 
-// NeedsTurnCostsSupport reports whether any turn cost EVs were registered.
 func (em *EncodingManager) NeedsTurnCostsSupport() bool {
 	return em.IntsForTurnCostFlags > 0
 }
 
-// GetVehicles returns the list of vehicle prefixes that have both _access and _average_speed EVs.
 func (em *EncodingManager) GetVehicles() []string {
 	var vehicles []string
 	for _, e := range em.encodedValues {
@@ -299,12 +275,10 @@ func (em *EncodingManager) GetVehicles() []string {
 	return vehicles
 }
 
-// ToEncodedValuesAsString serializes the edge-level EVs as a JSON array of strings.
 func (em *EncodingManager) ToEncodedValuesAsString() string {
 	return serializeEVList(em.encodedValues)
 }
 
-// ToTurnEncodedValuesAsString serializes the turn-cost EVs as a JSON array of strings.
 func (em *EncodingManager) ToTurnEncodedValuesAsString() string {
 	return serializeEVList(em.turnEncodedValues)
 }
@@ -325,7 +299,6 @@ func serializeEVList(evs []ev.EncodedValue) string {
 	return string(data)
 }
 
-// String returns a comma-separated list of vehicle names.
 func (em *EncodingManager) String() string {
 	return strings.Join(em.GetVehicles(), ",")
 }

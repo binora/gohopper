@@ -8,7 +8,6 @@ import (
 	"gohopper/core/util"
 )
 
-// Compile-time check that DefaultTurnCostProvider implements TurnCostProvider.
 var _ TurnCostProvider = (*DefaultTurnCostProvider)(nil)
 
 // DefaultTurnCostProvider reads turn restrictions from TurnCostStorage and
@@ -21,8 +20,7 @@ type DefaultTurnCostProvider struct {
 }
 
 // NewDefaultTurnCostProvider creates a DefaultTurnCostProvider.
-// A negative uTurnCosts value means u-turns are infinitely expensive.
-// turnRestrictionEnc may be nil, in which case no turn restrictions are checked.
+// A negative uTurnCosts means u-turns are infinitely expensive.
 func NewDefaultTurnCostProvider(
 	turnRestrictionEnc ev.BooleanEncodedValue,
 	turnCostStorage *storage.TurnCostStorage,
@@ -41,9 +39,6 @@ func NewDefaultTurnCostProvider(
 	}
 }
 
-// CalcTurnWeight returns the turn weight for transitioning from inEdge to outEdge
-// at viaNode. Returns +Inf for restricted turns, the configured u-turn cost for
-// u-turns, and 0 otherwise.
 func (p *DefaultTurnCostProvider) CalcTurnWeight(inEdge, viaNode, outEdge int) float64 {
 	if !util.EdgeIsValid(inEdge) || !util.EdgeIsValid(outEdge) {
 		return 0
@@ -58,8 +53,6 @@ func (p *DefaultTurnCostProvider) CalcTurnWeight(inEdge, viaNode, outEdge int) f
 	return 0
 }
 
-// CalcTurnMillis always returns 0. Making a proper assumption about turn time
-// is very hard; zero is the simplest approach.
-func (p *DefaultTurnCostProvider) CalcTurnMillis(inEdge, viaNode, outEdge int) int64 {
+func (p *DefaultTurnCostProvider) CalcTurnMillis(_, _, _ int) int64 {
 	return 0
 }

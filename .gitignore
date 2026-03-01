@@ -11,6 +11,7 @@ coverage.out
 coverage/
 bin/
 dist/
+gohopper
 
 # Local Go tool caches (only if created inside repo)
 .gocache/
@@ -48,3 +49,4 @@ cgiarprovider/
 **/node_modules/
 web/node/
 web-bundle/node/
+

@@ -15,7 +15,6 @@ const (
 )
 
 // TurnCostStorage stores turn restrictions/costs using a linked-list per node.
-// Each entry: |from_edge(4)|to_edge(4)|flags(4)|next(4)|
 type TurnCostStorage struct {
 	da    DataAccess
 	count int
@@ -77,8 +76,6 @@ func (tc *TurnCostStorage) Count() int {
 	return tc.count
 }
 
-// FindOrCreateEntry finds an existing entry matching (fromEdge, viaNode, toEdge)
-// using the node's turn cost linked list, or creates a new one.
 func (tc *TurnCostStorage) FindOrCreateEntry(na NodeAccess, fromEdge, viaNode, toEdge int) int {
 	idx := na.GetTurnCostIndex(viaNode)
 	prevIdx := NoTurnEntry
@@ -112,8 +109,6 @@ func (tc *TurnCostStorage) SetFlags(index int, flags int32) {
 	tc.da.SetInt(tc.toPointer(index)+tcFlags, flags)
 }
 
-// tcEdgeIntAccess implements ev.EdgeIntAccess by reading/writing the TC_FLAGS
-// field of a turn cost entry.
 type tcEdgeIntAccess struct {
 	tc *TurnCostStorage
 }
@@ -126,8 +121,6 @@ func (a *tcEdgeIntAccess) SetInt(entryIndex, index int, value int32) {
 	a.tc.da.SetInt(a.tc.toPointer(entryIndex)+tcFlags, value)
 }
 
-// findIndex searches the turn cost linked list for (fromEdge, viaNode, toEdge).
-// Returns the entry index, or -1 if not found.
 func (tc *TurnCostStorage) findIndex(na NodeAccess, fromEdge, viaNode, toEdge int) int {
 	if !util.EdgeIsValid(fromEdge) || !util.EdgeIsValid(toEdge) {
 		panic("from and to edge cannot be NO_EDGE")
@@ -150,7 +143,6 @@ func (tc *TurnCostStorage) findIndex(na NodeAccess, fromEdge, viaNode, toEdge in
 	panic("turn cost list is longer than expected")
 }
 
-// GetDecimal retrieves a turn cost decimal value for the given edges and via node.
 func (tc *TurnCostStorage) GetDecimal(na NodeAccess, dev ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int) float64 {
 	idx := tc.findIndex(na, fromEdge, viaNode, toEdge)
 	if idx < 0 {
@@ -159,7 +151,6 @@ func (tc *TurnCostStorage) GetDecimal(na NodeAccess, dev ev.DecimalEncodedValue,
 	return dev.GetDecimal(false, idx, &tcEdgeIntAccess{tc})
 }
 
-// GetBool retrieves a turn cost boolean value for the given edges and via node.
 func (tc *TurnCostStorage) GetBool(na NodeAccess, bev ev.BooleanEncodedValue, fromEdge, viaNode, toEdge int) bool {
 	idx := tc.findIndex(na, fromEdge, viaNode, toEdge)
 	if idx < 0 {
@@ -168,7 +159,6 @@ func (tc *TurnCostStorage) GetBool(na NodeAccess, bev ev.BooleanEncodedValue, fr
 	return bev.GetBool(false, idx, &tcEdgeIntAccess{tc})
 }
 
-// SetBool stores a turn cost boolean value for the given edges and via node.
 func (tc *TurnCostStorage) SetBool(na NodeAccess, bev ev.BooleanEncodedValue, fromEdge, viaNode, toEdge int, value bool) {
 	idx := tc.FindOrCreateEntry(na, fromEdge, viaNode, toEdge)
 	if idx < 0 {
@@ -177,7 +167,6 @@ func (tc *TurnCostStorage) SetBool(na NodeAccess, bev ev.BooleanEncodedValue, fr
 	bev.SetBool(false, idx, &tcEdgeIntAccess{tc}, value)
 }
 
-// SetDecimal stores a turn cost decimal value for the given edges and via node.
 func (tc *TurnCostStorage) SetDecimal(na NodeAccess, dev ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int, cost float64) {
 	idx := tc.FindOrCreateEntry(na, fromEdge, viaNode, toEdge)
 	if idx < 0 {
