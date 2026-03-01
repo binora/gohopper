@@ -362,6 +362,41 @@ func (bg *BaseGraph) copyProperties(from util.EdgeIteratorState, to *EdgeIterato
 	return to
 }
 
+func (bg *BaseGraph) ForEdgeAndCopiesOfEdgeState(explorer util.EdgeExplorer, edge util.EdgeIteratorState, consumer func(util.EdgeIteratorState)) {
+	geoRef := bg.Store.GetGeoRef(edge.(*EdgeIteratorStateImpl).edgePointer)
+	if geoRef == 0 {
+		consumer(edge)
+		return
+	}
+	iter := explorer.SetBaseNode(edge.GetBaseNode())
+	for iter.Next() {
+		iterImpl := iter.(*edgeIteratorImpl)
+		geoRefBefore := bg.Store.GetGeoRef(iterImpl.edgePointer)
+		if geoRefBefore == geoRef {
+			consumer(iter)
+		}
+		if bg.Store.GetGeoRef(iterImpl.edgePointer) != geoRefBefore {
+			panic("the consumer must not change the geo ref")
+		}
+	}
+}
+
+func (bg *BaseGraph) ForEdgeAndCopiesOfEdge(explorer util.EdgeExplorer, node, edge int, consumer func(int)) {
+	geoRef := bg.Store.GetGeoRef(bg.Store.ToEdgePointer(edge))
+	if geoRef == 0 {
+		consumer(edge)
+		return
+	}
+	iter := explorer.SetBaseNode(node)
+	for iter.Next() {
+		iterImpl := iter.(*edgeIteratorImpl)
+		geoRefBefore := bg.Store.GetGeoRef(iterImpl.edgePointer)
+		if geoRefBefore == geoRef {
+			consumer(iter.GetEdge())
+		}
+	}
+}
+
 // BaseGraphBuilder provides a convenient way to create BaseGraph instances.
 type BaseGraphBuilder struct {
 	dir           Directory

@@ -61,6 +61,13 @@ type AbstractBidirAlgo struct {
 
 	// CreatePathExtractorFn allows concrete types to override path extraction.
 	CreatePathExtractorFn func(graph storage.Graph, w weighting.Weighting) BidirPathExtractor
+
+	// Hooks for algorithm-specific overrides (e.g., AStarBidirection).
+	// When nil, default behavior is used.
+	PreInitFn          func(from int, fromWeight float64, to int, toWeight float64) // called before init
+	FinishedFn         func() bool                                                   // overrides finished()
+	CreateStartEntryFn func(node int, weight float64, reverse bool) *SPTEntry        // overrides createStartEntry
+	CreateEntryFn      func(edge util.EdgeIteratorState, weight float64, parent *SPTEntry, reverse bool) *SPTEntry
 }
 
 func NewAbstractBidirAlgo(graph storage.Graph, w weighting.Weighting, tMode routingutil.TraversalMode) AbstractBidirAlgo {
@@ -116,6 +123,9 @@ func (a *AbstractBidirAlgo) CalcPaths(from, to int) []*Path {
 }
 
 func (a *AbstractBidirAlgo) init(from int, fromWeight float64, to int, toWeight float64) {
+	if a.PreInitFn != nil {
+		a.PreInitFn(from, fromWeight, to, toWeight)
+	}
 	a.initFrom(from, fromWeight)
 	a.initTo(to, toWeight)
 	a.postInit(from, to)
@@ -123,7 +133,7 @@ func (a *AbstractBidirAlgo) init(from int, fromWeight float64, to int, toWeight 
 
 func (a *AbstractBidirAlgo) initFrom(from int, weight float64) {
 	a.from = from
-	a.currFrom = a.createStartEntry(from, weight)
+	a.currFrom = a.createStartEntry(from, weight, false)
 	heap.Push(&a.pqOpenSetFrom, a.currFrom)
 	if !a.TraversalMode.IsEdgeBased() {
 		a.bestWeightMapFrom[from] = a.currFrom
@@ -132,14 +142,17 @@ func (a *AbstractBidirAlgo) initFrom(from int, weight float64) {
 
 func (a *AbstractBidirAlgo) initTo(to int, weight float64) {
 	a.to = to
-	a.currTo = a.createStartEntry(to, weight)
+	a.currTo = a.createStartEntry(to, weight, true)
 	heap.Push(&a.pqOpenSetTo, a.currTo)
 	if !a.TraversalMode.IsEdgeBased() {
 		a.bestWeightMapTo[to] = a.currTo
 	}
 }
 
-func (a *AbstractBidirAlgo) createStartEntry(node int, weight float64) *SPTEntry {
+func (a *AbstractBidirAlgo) createStartEntry(node int, weight float64, reverse bool) *SPTEntry {
+	if a.CreateStartEntryFn != nil {
+		return a.CreateStartEntryFn(node, weight, reverse)
+	}
 	return NewSPTEntry(node, weight)
 }
 
@@ -208,6 +221,9 @@ func (a *AbstractBidirAlgo) runAlgo() {
 }
 
 func (a *AbstractBidirAlgo) finished() bool {
+	if a.FinishedFn != nil {
+		return a.FinishedFn()
+	}
 	if a.finishedFrom || a.finishedTo {
 		return true
 	}
@@ -261,13 +277,13 @@ func (a *AbstractBidirAlgo) fillEdges(currEdge *SPTEntry, prioQueue *sptEntryHea
 		traversalID := a.TraversalMode.CreateTraversalID(iter, reverse)
 		entry, exists := bestWeightMap[traversalID]
 		if !exists {
-			entry = NewSPTEntryFull(iter.GetEdge(), iter.GetAdjNode(), weight, currEdge)
+			entry = a.createEntry(iter, weight, currEdge, reverse)
 			bestWeightMap[traversalID] = entry
 			heap.Push(prioQueue, entry)
 		} else if entry.GetWeightOfVisitedPath() > weight {
 			entry.Deleted = true
 			isBestEntry := (reverse && entry == a.BestBwdEntry) || (!reverse && entry == a.BestFwdEntry)
-			entry = NewSPTEntryFull(iter.GetEdge(), iter.GetAdjNode(), weight, currEdge)
+			entry = a.createEntry(iter, weight, currEdge, reverse)
 			bestWeightMap[traversalID] = entry
 			heap.Push(prioQueue, entry)
 			if isBestEntry {
@@ -289,6 +305,13 @@ func (a *AbstractBidirAlgo) fillEdges(currEdge *SPTEntry, prioQueue *sptEntryHea
 			a.updateBestPathEntry(edgeWeight, entry, traversalID, reverse)
 		}
 	}
+}
+
+func (a *AbstractBidirAlgo) createEntry(edge util.EdgeIteratorState, weight float64, parent *SPTEntry, reverse bool) *SPTEntry {
+	if a.CreateEntryFn != nil {
+		return a.CreateEntryFn(edge, weight, parent, reverse)
+	}
+	return NewSPTEntryFull(edge.GetEdge(), edge.GetAdjNode(), weight, parent)
 }
 
 func (a *AbstractBidirAlgo) calcWeight(iter util.EdgeIteratorState, currEdge *SPTEntry, reverse bool) float64 {

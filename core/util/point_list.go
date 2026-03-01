@@ -63,6 +63,15 @@ func (pl *PointList) Add3D(lat, lon, ele float64) {
 	}
 }
 
+func (pl *PointList) AddFrom(other *PointList, index int) {
+	pl.ensureMutable()
+	if pl.is3D {
+		pl.Add3D(other.GetLat(index), other.GetLon(index), other.GetEle(index))
+	} else {
+		pl.Add(other.GetLat(index), other.GetLon(index))
+	}
+}
+
 func (pl *PointList) AddPointList(other *PointList) {
 	pl.ensureMutable()
 	pl.lats = append(pl.lats, other.lats...)
