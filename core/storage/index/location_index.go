@@ -76,25 +76,3 @@ func (f *bboxTileFilter) AcceptPartially(tile util.BBox) bool {
 	return f.bbox.Intersects(tile)
 }
 
-// --- Stub implementation used by existing code ---
-
-// StubLocationIndex is a placeholder implementation of LocationIndex that
-// returns pass-through snaps. It will be replaced once the real index is ported.
-type StubLocationIndex struct{}
-
-// NewLocationIndex returns a stub LocationIndex. Existing callers that relied on
-// the old concrete *LocationIndex type should migrate to the LocationIndex
-// interface; this constructor eases the transition.
-func NewLocationIndex() *StubLocationIndex {
-	return &StubLocationIndex{}
-}
-
-func (s *StubLocationIndex) FindClosest(lat, lon float64, _ routeutil.EdgeFilter) *Snap {
-	snap := NewSnap(lat, lon)
-	snap.SetClosestNode(0)
-	return snap
-}
-
-func (s *StubLocationIndex) Query(_ TileFilter, _ Visitor) {}
-
-func (s *StubLocationIndex) Close() {}

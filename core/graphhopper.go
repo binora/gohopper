@@ -34,15 +34,12 @@ type GraphHopper struct {
 func NewGraphHopper() *GraphHopper {
 	dir := storage.NewRAMDirectory("", false)
 	baseGraph := storage.NewBaseGraphBuilder(4).SetDir(dir).Build()
-	locationIndex := index.NewLocationIndex()
 	routerConfig := routing.NewRouterConfig()
 	profilesByName := make(map[string]config.Profile)
 	return &GraphHopper{
 		profilesByName: profilesByName,
 		graph:          baseGraph,
-		locationIndex:  locationIndex,
 		routerConfig:   routerConfig,
-		router:         routing.NewRouter(baseGraph, locationIndex, routerConfig, profilesByName, nil, nil),
 		properties:     make(map[string]string),
 	}
 }
@@ -103,6 +100,11 @@ func (g *GraphHopper) load() error {
 	}
 
 	g.graph = bg
+
+	locationIdx := index.NewLocationIndexTree(bg, dir)
+	if locationIdx.LoadExisting() {
+		g.locationIndex = locationIdx
+	}
 
 	wf := weighting.NewDefaultWeightingFactory(bg, em)
 	g.router = routing.NewRouter(bg, g.locationIndex, g.routerConfig, g.profilesByName, wf, em)
