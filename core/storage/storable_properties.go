@@ -58,7 +58,7 @@ func (sp *StorableProperties) Flush() {
 	}
 }
 
-func (sp *StorableProperties) Put(key string, val interface{}) {
+func (sp *StorableProperties) Put(key string, val any) {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 	sp.props[key] = fmt.Sprintf("%v", val)

@@ -9,7 +9,7 @@ type Profile struct {
 	CustomModel      map[string]any         `yaml:"custom_model,omitempty" json:"custom_model,omitempty"`
 	TurnCosts        map[string]any         `yaml:"turn_costs,omitempty" json:"turn_costs,omitempty"`
 	NavigationMode   string                 `yaml:"navigation_mode,omitempty" json:"navigation_mode,omitempty"`
-	Hints            map[string]interface{} `yaml:",inline" json:"-"`
+	Hints            map[string]any `yaml:",inline" json:"-"`
 }
 
 type CHProfile struct {
@@ -29,7 +29,7 @@ func (p *Profile) UnmarshalJSON(data []byte) error {
 	}
 
 	p.Weighting = "custom"
-	p.Hints = map[string]interface{}{}
+	p.Hints = map[string]any{}
 
 	for key, value := range raw {
 		switch key {

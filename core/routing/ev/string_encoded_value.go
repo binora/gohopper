@@ -7,13 +7,13 @@ import (
 
 var _ EncodedValue = (*StringEncodedValue)(nil)
 
-// StringEncodedValue stores up to maxValues distinct strings by index+1,
+// StringEncodedValue stores up to MaxValues distinct strings by index+1,
 // with 0 representing no value.
 type StringEncodedValue struct {
 	*IntEncodedValueImpl
-	maxValues int
-	values    []string
-	indexMap  map[string]int
+	MaxValues int            `json:"max_values"`
+	Values    []string       `json:"values"`
+	IndexMap  map[string]int `json:"index_map"`
 }
 
 func NewStringEncodedValue(name string, expectedValueCount int) *StringEncodedValue {
@@ -24,9 +24,9 @@ func NewStringEncodedValueDir(name string, expectedValueCount int, storeTwoDirec
 	n := 32 - bits.LeadingZeros32(uint32(expectedValueCount))
 	return &StringEncodedValue{
 		IntEncodedValueImpl: NewIntEncodedValueImpl(name, n, storeTwoDirections),
-		maxValues:           roundUp(expectedValueCount),
-		values:              make([]string, 0, expectedValueCount),
-		indexMap:            make(map[string]int, expectedValueCount),
+		MaxValues:           roundUp(expectedValueCount),
+		Values:              make([]string, 0, expectedValueCount),
+		IndexMap:            make(map[string]int, expectedValueCount),
 	}
 }
 
@@ -43,9 +43,9 @@ func NewStringEncodedValueWithValues(name string, numBits int, values []string, 
 	copy(copied, values)
 	return &StringEncodedValue{
 		IntEncodedValueImpl: NewIntEncodedValueImpl(name, numBits, storeTwoDirections),
-		maxValues:           maxValues,
-		values:              copied,
-		indexMap:            indexMap,
+		MaxValues:           maxValues,
+		Values:              copied,
+		IndexMap:            indexMap,
 	}
 }
 
@@ -54,14 +54,14 @@ func (s *StringEncodedValue) SetString(reverse bool, edgeID int, eia EdgeIntAcce
 		s.IntEncodedValueImpl.SetInt(reverse, edgeID, eia, 0)
 		return
 	}
-	idx, ok := s.indexMap[value]
+	idx, ok := s.IndexMap[value]
 	if !ok {
-		if len(s.values) == s.maxValues {
-			panic(fmt.Sprintf("Maximum number of values reached for %s: %d", s.GetName(), s.maxValues))
+		if len(s.Values) == s.MaxValues {
+			panic(fmt.Sprintf("Maximum number of values reached for %s: %d", s.GetName(), s.MaxValues))
 		}
-		s.values = append(s.values, value)
-		idx = len(s.values)
-		s.indexMap[value] = idx
+		s.Values = append(s.Values, value)
+		idx = len(s.Values)
+		s.IndexMap[value] = idx
 	}
 	s.IntEncodedValueImpl.SetInt(reverse, edgeID, eia, int32(idx))
 }
@@ -71,19 +71,19 @@ func (s *StringEncodedValue) GetString(reverse bool, edgeID int, eia EdgeIntAcce
 	if v == 0 {
 		return ""
 	}
-	return s.values[v-1]
+	return s.Values[v-1]
 }
 
 func (s *StringEncodedValue) IndexOf(value string) int {
-	if idx, ok := s.indexMap[value]; ok {
+	if idx, ok := s.IndexMap[value]; ok {
 		return idx
 	}
 	return 0
 }
 
 func (s *StringEncodedValue) GetValues() []string {
-	out := make([]string, len(s.values))
-	copy(out, s.values)
+	out := make([]string, len(s.Values))
+	copy(out, s.Values)
 	return out
 }
 

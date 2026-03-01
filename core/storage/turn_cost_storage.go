@@ -1,6 +1,9 @@
 package storage
 
-import "gohopper/core/util"
+import (
+	"gohopper/core/routing/ev"
+	"gohopper/core/util"
+)
 
 const (
 	NoTurnEntry     = -1
@@ -107,4 +110,69 @@ func (tc *TurnCostStorage) FindOrCreateEntry(na NodeAccess, fromEdge, viaNode, t
 
 func (tc *TurnCostStorage) SetFlags(index int, flags int32) {
 	tc.da.SetInt(tc.toPointer(index)+tcFlags, flags)
+}
+
+// tcEdgeIntAccess implements ev.EdgeIntAccess by reading/writing the TC_FLAGS
+// field of a turn cost entry.
+type tcEdgeIntAccess struct {
+	tc *TurnCostStorage
+}
+
+func (a *tcEdgeIntAccess) GetInt(entryIndex, index int) int32 {
+	return a.tc.da.GetInt(a.tc.toPointer(entryIndex) + tcFlags)
+}
+
+func (a *tcEdgeIntAccess) SetInt(entryIndex, index int, value int32) {
+	a.tc.da.SetInt(a.tc.toPointer(entryIndex)+tcFlags, value)
+}
+
+// findIndex searches the turn cost linked list for (fromEdge, viaNode, toEdge).
+// Returns the entry index, or -1 if not found.
+func (tc *TurnCostStorage) findIndex(na NodeAccess, fromEdge, viaNode, toEdge int) int {
+	if !util.EdgeIsValid(fromEdge) || !util.EdgeIsValid(toEdge) {
+		panic("from and to edge cannot be NO_EDGE")
+	}
+	if viaNode < 0 {
+		panic("via node cannot be negative")
+	}
+	const maxEntries = 1000
+	idx := na.GetTurnCostIndex(viaNode)
+	for i := 0; i < maxEntries; i++ {
+		if idx == NoTurnEntry {
+			return -1
+		}
+		ptr := tc.toPointer(idx)
+		if int(tc.da.GetInt(ptr+tcFrom)) == fromEdge && int(tc.da.GetInt(ptr+tcTo)) == toEdge {
+			return idx
+		}
+		idx = int(tc.da.GetInt(ptr + tcNext))
+	}
+	panic("turn cost list is longer than expected")
+}
+
+// GetDecimal retrieves a turn cost decimal value for the given edges and via node.
+func (tc *TurnCostStorage) GetDecimal(na NodeAccess, dev ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int) float64 {
+	idx := tc.findIndex(na, fromEdge, viaNode, toEdge)
+	if idx < 0 {
+		return 0
+	}
+	return dev.GetDecimal(false, idx, &tcEdgeIntAccess{tc})
+}
+
+// GetBool retrieves a turn cost boolean value for the given edges and via node.
+func (tc *TurnCostStorage) GetBool(na NodeAccess, bev ev.BooleanEncodedValue, fromEdge, viaNode, toEdge int) bool {
+	idx := tc.findIndex(na, fromEdge, viaNode, toEdge)
+	if idx < 0 {
+		return false
+	}
+	return bev.GetBool(false, idx, &tcEdgeIntAccess{tc})
+}
+
+// SetDecimal stores a turn cost decimal value for the given edges and via node.
+func (tc *TurnCostStorage) SetDecimal(na NodeAccess, dev ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int, cost float64) {
+	idx := tc.FindOrCreateEntry(na, fromEdge, viaNode, toEdge)
+	if idx < 0 {
+		panic("invalid turn cost entry index")
+	}
+	dev.SetDecimal(false, idx, &tcEdgeIntAccess{tc}, cost)
 }

@@ -32,6 +32,10 @@ func (e *EnumEncodedValue[E]) GetValues() []E {
 	return e.Values
 }
 
+func (e *EnumEncodedValue[E]) getIntImpl() *IntEncodedValueImpl {
+	return e.IntEncodedValueImpl
+}
+
 // enumSequence returns a slice [0, 1, 2, ..., n-1] typed as E.
 func enumSequence[E ~int](n int) []E {
 	s := make([]E, n)

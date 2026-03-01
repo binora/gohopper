@@ -27,7 +27,7 @@ test:
 	GOCACHE="$(GOCACHE)" $(GO) test ./...
 
 build:
-	$(GO) build -o gohopper ./...
+	$(GO) build -o gohopper ./cmd/gohopper
 
 conformance:
 	GO="$(GO)" \
