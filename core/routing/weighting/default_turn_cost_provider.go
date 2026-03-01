@@ -19,8 +19,8 @@ type DefaultTurnCostProvider struct {
 	uTurnCosts         float64
 }
 
-// NewDefaultTurnCostProvider creates a DefaultTurnCostProvider.
-// A negative uTurnCosts means u-turns are infinitely expensive.
+// NewDefaultTurnCostProvider creates a provider that reads turn restrictions
+// from storage. A negative uTurnCosts means u-turns are infinitely expensive.
 func NewDefaultTurnCostProvider(
 	turnRestrictionEnc ev.BooleanEncodedValue,
 	turnCostStorage *storage.TurnCostStorage,

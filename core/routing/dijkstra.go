@@ -9,8 +9,7 @@ import (
 	"gohopper/core/storage"
 )
 
-// Dijkstra implements a single-source shortest path algorithm.
-// See http://en.wikipedia.org/wiki/Dijkstra's_algorithm
+// Dijkstra implements single-source shortest path search.
 type Dijkstra struct {
 	AbstractRoutingAlgorithm
 	fromMap  map[int]*SPTEntry

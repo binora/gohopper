@@ -33,7 +33,7 @@ func (f *AccessFilter) GetAccessEnc() ev.BooleanEncodedValue {
 }
 
 func (f *AccessFilter) Accept(iter ghutil.EdgeIteratorState) bool {
-	return f.fwd && iter.GetBool(f.accessEnc) || f.bwd && iter.GetReverseBool(f.accessEnc)
+	return (f.fwd && iter.GetBool(f.accessEnc)) || (f.bwd && iter.GetReverseBool(f.accessEnc))
 }
 
 func (f *AccessFilter) String() string {

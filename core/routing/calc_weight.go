@@ -12,11 +12,8 @@ func CalcWeightWithTurnWeight(w weighting.Weighting, edgeState util.EdgeIterator
 	if !util.EdgeIsValid(prevOrNextEdgeID) {
 		return edgeWeight
 	}
-	var turnWeight float64
 	if reverse {
-		turnWeight = w.CalcTurnWeight(edgeState.GetEdge(), edgeState.GetBaseNode(), prevOrNextEdgeID)
-	} else {
-		turnWeight = w.CalcTurnWeight(prevOrNextEdgeID, edgeState.GetBaseNode(), edgeState.GetEdge())
+		return edgeWeight + w.CalcTurnWeight(edgeState.GetEdge(), edgeState.GetBaseNode(), prevOrNextEdgeID)
 	}
-	return edgeWeight + turnWeight
+	return edgeWeight + w.CalcTurnWeight(prevOrNextEdgeID, edgeState.GetBaseNode(), edgeState.GetEdge())
 }

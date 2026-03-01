@@ -19,7 +19,6 @@ type DefaultWeightingFactory struct {
 	encodingManager *routingutil.EncodingManager
 }
 
-// NewDefaultWeightingFactory creates a DefaultWeightingFactory.
 func NewDefaultWeightingFactory(graph *storage.BaseGraph, em *routingutil.EncodingManager) *DefaultWeightingFactory {
 	return &DefaultWeightingFactory{
 		graph:           graph,
@@ -27,7 +26,6 @@ func NewDefaultWeightingFactory(graph *storage.BaseGraph, em *routingutil.Encodi
 	}
 }
 
-// CreateWeighting creates a Weighting for the given profile.
 func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints map[string]any, disableTurnCosts bool) Weighting {
 	weightingStr := strings.ToLower(profile.Weighting)
 	if weightingStr == "" {
