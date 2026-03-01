@@ -9,6 +9,7 @@ import (
 	"gohopper/core/config"
 	"gohopper/core/routing"
 	routingutil "gohopper/core/routing/util"
+	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
 	"gohopper/core/storage/index"
 	"gohopper/core/util"
@@ -35,12 +36,13 @@ func NewGraphHopper() *GraphHopper {
 	baseGraph := storage.NewBaseGraphBuilder(4).SetDir(dir).Build()
 	locationIndex := index.NewLocationIndex()
 	routerConfig := routing.NewRouterConfig()
+	profilesByName := make(map[string]config.Profile)
 	return &GraphHopper{
-		profilesByName: make(map[string]config.Profile),
+		profilesByName: profilesByName,
 		graph:          baseGraph,
 		locationIndex:  locationIndex,
 		routerConfig:   routerConfig,
-		router:         routing.NewRouter(baseGraph, locationIndex, routerConfig),
+		router:         routing.NewRouter(baseGraph, locationIndex, routerConfig, profilesByName, nil, nil),
 		properties:     make(map[string]string),
 	}
 }
@@ -101,6 +103,10 @@ func (g *GraphHopper) load() error {
 	}
 
 	g.graph = bg
+
+	wf := weighting.NewDefaultWeightingFactory(bg, em)
+	g.router = routing.NewRouter(bg, g.locationIndex, g.routerConfig, g.profilesByName, wf, em)
+
 	g.fullyLoaded = true
 	return nil
 }

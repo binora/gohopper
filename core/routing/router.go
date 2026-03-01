@@ -5,6 +5,10 @@ import (
 	"math"
 	"strings"
 
+	"gohopper/core/config"
+	"gohopper/core/routing/querygraph"
+	routingutil "gohopper/core/routing/util"
+	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
 	"gohopper/core/storage/index"
 	"gohopper/core/util"
@@ -12,86 +16,196 @@ import (
 )
 
 type Router struct {
-	graph        *storage.BaseGraph
-	locationIdx  index.LocationIndex
-	routerConfig RouterConfig
+	graph            *storage.BaseGraph
+	locationIdx      index.LocationIndex
+	routerConfig     RouterConfig
+	profilesByName   map[string]config.Profile
+	weightingFactory weighting.WeightingFactory
+	encodingManager  *routingutil.EncodingManager
 }
 
-func NewRouter(graph *storage.BaseGraph, locationIdx index.LocationIndex, routerConfig RouterConfig) *Router {
-	return &Router{graph: graph, locationIdx: locationIdx, routerConfig: routerConfig}
+func NewRouter(
+	graph *storage.BaseGraph,
+	locationIdx index.LocationIndex,
+	routerConfig RouterConfig,
+	profilesByName map[string]config.Profile,
+	weightingFactory weighting.WeightingFactory,
+	encodingManager *routingutil.EncodingManager,
+) *Router {
+	return &Router{
+		graph:            graph,
+		locationIdx:      locationIdx,
+		routerConfig:     routerConfig,
+		profilesByName:   profilesByName,
+		weightingFactory: weightingFactory,
+		encodingManager:  encodingManager,
+	}
 }
 
 func (r *Router) Route(request webapi.GHRequest) webapi.GHResponse {
 	response := webapi.NewGHResponse()
-	if err := r.checkNoLegacyParameters(request); err != nil {
-		response.AddError(err)
-		return response
-	}
-	if err := r.checkAtLeastOnePoint(request); err != nil {
-		response.AddError(err)
-		return response
+
+	for _, check := range []func(webapi.GHRequest) error{
+		r.checkNoLegacyParameters,
+		r.checkAtLeastOnePoint,
+		r.checkHeadings,
+		r.checkPointHints,
+		r.checkCurbsides,
+		r.checkNoBlockArea,
+	} {
+		if err := check(request); err != nil {
+			response.AddError(err)
+			return response
+		}
 	}
 	if err := r.checkIfPointsAreInBoundsAndNotNull(request.Points); err != nil {
 		response.AddError(err)
 		return response
 	}
-	if err := r.checkHeadings(request); err != nil {
-		response.AddError(err)
-		return response
-	}
-	if err := r.checkPointHints(request); err != nil {
-		response.AddError(err)
-		return response
-	}
-	if err := r.checkCurbsides(request); err != nil {
-		response.AddError(err)
-		return response
-	}
-	if err := r.checkNoBlockArea(request); err != nil {
-		response.AddError(err)
+
+	profile, ok := r.profilesByName[request.Profile]
+	if !ok {
+		response.AddError(fmt.Errorf("the requested profile '%s' does not exist.\nTo use this profile you need to add it to the configuration, see docs/core/profiles.md", request.Profile))
 		return response
 	}
 
-	distance := 0.0
-	for i := 1; i < len(request.Points); i++ {
-		distance += util.HaversineDistance(request.Points[i-1], request.Points[i])
-	}
-	timeMs := int64((distance / 13000.0) * 3600.0 * 1000.0)
-	if len(request.Points) <= 1 {
-		timeMs = 0
+	w := r.weightingFactory.CreateWeighting(profile, nil, false)
+	tMode := routingutil.NodeBased
+	if w.HasTurnCosts() {
+		tMode = routingutil.EdgeBased
 	}
 
-	bboxVal := util.CalcBBox(request.Points)
-	bbox := bboxVal.ToArray()
-	instructions := make([]webapi.Instruction, 0, 2)
-	if request.Options.Instructions {
-		instructions = append(instructions, webapi.Instruction{Text: "Continue", Distance: distance, Time: timeMs, Interval: [2]int{0, maxInt(0, len(request.Points)-1)}, Sign: 0})
-		instructions = append(instructions, webapi.Instruction{Text: "Arrive at destination", Distance: 0, Time: 0, Interval: [2]int{maxInt(0, len(request.Points)-1), maxInt(0, len(request.Points)-1)}, Sign: 4})
+	snaps := make([]*index.Snap, len(request.Points))
+	for i, pt := range request.Points {
+		snap := r.locationIdx.FindClosest(pt.Lat, pt.Lon, routingutil.AllEdges)
+		if snap == nil || !snap.IsValid() {
+			response.AddError(webapi.PointNotFoundError{
+				Message: fmt.Sprintf("Cannot find point %d: %s", i, pt.String()),
+				Point:   i,
+			})
+			return response
+		}
+		snap.CalcSnappedPoint(util.DistPlane)
+		snaps[i] = snap
 	}
 
-	path := webapi.ResponsePath{
-		Distance:      distance,
-		Time:          timeMs,
-		BBox:          bbox,
-		PointsEncoded: request.Options.PointsEncoded,
-		Instructions:  instructions,
-		Weight:        distance,
-	}
-	if request.Options.CalcPoints {
-		if request.Options.PointsEncoded {
-			enc := util.EncodePolylineFromPoints(request.Points, request.Options.PointsEncodedMultiplier)
-			path.Points = enc
-			path.SnappedWaypoints = enc
-		} else {
-			path.Points = map[string]any{"type": "LineString", "coordinates": toCoordinates(request.Points)}
-			path.SnappedWaypoints = map[string]any{"type": "LineString", "coordinates": toCoordinates(request.Points)}
+	queryGraph := querygraph.CreateFromSnaps(r.graph, snaps)
+	algoOpts := r.buildAlgoOpts(request, tMode)
+	algoFactory := &RoutingAlgorithmFactorySimple{}
+	pathCalculator := NewFlexiblePathCalculator(queryGraph, algoFactory, w, algoOpts)
+
+	totalVisitedNodes := 0
+	var allPaths []*Path
+	for i := 0; i < len(snaps)-1; i++ {
+		fromNode := snaps[i].GetClosestNode()
+		toNode := snaps[i+1].GetClosestNode()
+		paths := pathCalculator.CalcPaths(fromNode, toNode, NewEdgeRestrictions())
+		if len(paths) == 0 || !paths[0].Found {
+			response.AddError(webapi.ConnectionNotFoundError{
+				Message: fmt.Sprintf("Connection between locations not found for leg %d", i),
+			})
+			return response
+		}
+		allPaths = append(allPaths, paths[0])
+		totalVisitedNodes += pathCalculator.GetVisitedNodes()
+
+		// FlexiblePathCalculator is single-use per algo; recreate for next leg.
+		if i < len(snaps)-2 {
+			pathCalculator = NewFlexiblePathCalculator(queryGraph, algoFactory, w, algoOpts)
 		}
 	}
 
-	response.Add(path)
-	response.Hints.PutObject("visited_nodes.sum", len(request.Points)*10)
-	response.Hints.PutObject("visited_nodes.average", 10)
+	responsePath := r.buildResponsePath(request, allPaths, snaps)
+	response.Add(responsePath)
+	response.Hints.PutObject("visited_nodes.sum", totalVisitedNodes)
+	avg := 0
+	if len(snaps) > 1 {
+		avg = totalVisitedNodes / (len(snaps) - 1)
+	}
+	response.Hints.PutObject("visited_nodes.average", avg)
 	return response
+}
+
+func (r *Router) buildAlgoOpts(request webapi.GHRequest, tMode routingutil.TraversalMode) AlgorithmOptions {
+	opts := NewAlgorithmOptions()
+	opts.TraversalMode = tMode
+	opts.MaxVisitedNodes = r.routerConfig.MaxVisitedNodes
+	opts.TimeoutMillis = r.routerConfig.TimeoutMillis
+
+	if request.Algorithm != "" {
+		opts.Algorithm = strings.ToLower(request.Algorithm)
+	}
+	return opts
+}
+
+func (r *Router) buildResponsePath(request webapi.GHRequest, paths []*Path, snaps []*index.Snap) webapi.ResponsePath {
+	var totalDistance float64
+	var totalTime int64
+	var totalWeight float64
+
+	allPoints := util.NewPointList(0, false)
+	for i, p := range paths {
+		totalDistance += p.Distance
+		totalTime += p.Time
+		totalWeight += p.Weight
+
+		if request.Options.CalcPoints {
+			legPoints := p.CalcPoints()
+			for j := 0; j < legPoints.Size(); j++ {
+				if i > 0 && j == 0 {
+					continue
+				}
+				pt := legPoints.Get(j)
+				allPoints.Add(pt.Lat, pt.Lon)
+			}
+		}
+	}
+
+	waypoints := make([]util.GHPoint, len(snaps))
+	for i, s := range snaps {
+		sp := s.GetSnappedPoint()
+		waypoints[i] = sp.GHPoint
+	}
+
+	rp := webapi.ResponsePath{
+		Distance:      totalDistance,
+		Time:          totalTime,
+		Weight:        totalWeight,
+		PointsEncoded: request.Options.PointsEncoded,
+	}
+
+	if request.Options.CalcPoints && allPoints.Size() > 0 {
+		ghPoints := make([]util.GHPoint, allPoints.Size())
+		for i := 0; i < allPoints.Size(); i++ {
+			pt := allPoints.Get(i)
+			ghPoints[i] = pt.GHPoint
+		}
+
+		if request.Options.PointsEncoded {
+			rp.Points = util.EncodePolylineFromPoints(ghPoints, request.Options.PointsEncodedMultiplier)
+			rp.SnappedWaypoints = util.EncodePolylineFromPoints(waypoints, request.Options.PointsEncodedMultiplier)
+		} else {
+			rp.Points = map[string]any{"type": "LineString", "coordinates": toCoordinates(ghPoints)}
+			rp.SnappedWaypoints = map[string]any{"type": "LineString", "coordinates": toCoordinates(waypoints)}
+		}
+
+		bboxVal := util.CalcBBox(ghPoints)
+		rp.BBox = bboxVal.ToArray()
+	}
+
+	if request.Options.Instructions {
+		rp.Instructions = buildSimpleInstructions(totalDistance, totalTime, allPoints.Size())
+	}
+
+	return rp
+}
+
+func buildSimpleInstructions(distance float64, timeMs int64, numPoints int) []webapi.Instruction {
+	lastIdx := max(0, numPoints-1)
+	return []webapi.Instruction{
+		{Text: "Continue", Distance: distance, Time: timeMs, Interval: [2]int{0, lastIdx}, Sign: 0},
+		{Text: "Arrive at destination", Distance: 0, Time: 0, Interval: [2]int{lastIdx, lastIdx}, Sign: 4},
+	}
 }
 
 func (r *Router) checkNoLegacyParameters(request webapi.GHRequest) error {
@@ -164,18 +278,11 @@ func (r *Router) checkNoBlockArea(request webapi.GHRequest) error {
 }
 
 func toCoordinates(points []util.GHPoint) [][]float64 {
-	coords := make([][]float64, 0, len(points))
-	for _, p := range points {
-		coords = append(coords, []float64{p.Lon, p.Lat})
+	coords := make([][]float64, len(points))
+	for i, p := range points {
+		coords[i] = []float64{p.Lon, p.Lat}
 	}
 	return coords
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func NormalizeSnapPreventions(s []string) []string {

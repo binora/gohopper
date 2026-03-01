@@ -11,10 +11,9 @@ import (
 	"gohopper/core/util"
 )
 
-// AbstractBidirAlgo implements bidirectional Dijkstra search. It merges the
-// Java AbstractBidirAlgo and AbstractNonCHBidirAlgo into a single Go struct.
-// Concrete algorithms (e.g. DijkstraBidirectionRef) embed this struct and
-// provide a name and optional hook overrides.
+// AbstractBidirAlgo provides shared state and logic for bidirectional routing
+// algorithms. Concrete algorithms embed this struct and optionally override
+// behavior via hook functions.
 type AbstractBidirAlgo struct {
 	Graph         storage.Graph
 	Weighting     weighting.Weighting
@@ -56,25 +55,20 @@ type AbstractBidirAlgo struct {
 
 	additionalEdgeFilter routingutil.EdgeFilter
 
-	// Name is set by the concrete algorithm.
 	Name string
 
-	// CreatePathExtractorFn allows concrete types to override path extraction.
 	CreatePathExtractorFn func(graph storage.Graph, w weighting.Weighting) BidirPathExtractor
-
-	// Hooks for algorithm-specific overrides (e.g., AStarBidirection).
-	// When nil, default behavior is used.
-	PreInitFn          func(from int, fromWeight float64, to int, toWeight float64) // called before init
-	FinishedFn         func() bool                                                   // overrides finished()
-	CreateStartEntryFn func(node int, weight float64, reverse bool) *SPTEntry        // overrides createStartEntry
-	CreateEntryFn      func(edge util.EdgeIteratorState, weight float64, parent *SPTEntry, reverse bool) *SPTEntry
+	PreInitFn             func(from int, fromWeight float64, to int, toWeight float64)
+	FinishedFn            func() bool
+	CreateStartEntryFn    func(node int, weight float64, reverse bool) *SPTEntry
+	CreateEntryFn         func(edge util.EdgeIteratorState, weight float64, parent *SPTEntry, reverse bool) *SPTEntry
 }
 
 func NewAbstractBidirAlgo(graph storage.Graph, w weighting.Weighting, tMode routingutil.TraversalMode) AbstractBidirAlgo {
 	if w.HasTurnCosts() && !tMode.IsEdgeBased() {
 		panic("Weightings supporting turn costs cannot be used with node-based traversal mode")
 	}
-	size := min(max(200, graph.GetNodes()/10), 150_000)
+	size := min(max(graph.GetNodes()/10, 200), 150_000)
 	a := AbstractBidirAlgo{
 		Graph:         graph,
 		Weighting:     w,
@@ -393,7 +387,6 @@ func (a *AbstractBidirAlgo) setupFinishTime() {
 	now := currentTimeMillis()
 	finish := now + a.timeoutMillis
 	if a.timeoutMillis > 0 && finish < now {
-		// overflow: cap to max
 		a.finishTimeMillis = math.MaxInt64
 		return
 	}

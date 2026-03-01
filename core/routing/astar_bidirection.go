@@ -9,8 +9,7 @@ import (
 	"gohopper/core/util"
 )
 
-// AStarBidirection implements bidirectional A* search using a balanced
-// weight approximator for consistent heuristic estimates.
+// AStarBidirection implements bidirectional A* search.
 type AStarBidirection struct {
 	AbstractBidirAlgo
 	weightApprox           *weighting.BalancedWeightApproximator
@@ -27,7 +26,6 @@ func NewAStarBidirection(graph storage.Graph, w weighting.Weighting, tMode routi
 	defaultApprox.SetDistanceCalc(util.DistPlane)
 	a.SetApproximation(defaultApprox)
 
-	// Wire hooks
 	a.PreInitFn = a.preInit
 	a.FinishedFn = a.astarFinished
 	a.CreateStartEntryFn = a.astarCreateStartEntry

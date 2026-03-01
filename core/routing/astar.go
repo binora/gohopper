@@ -11,7 +11,7 @@ import (
 	"gohopper/core/util"
 )
 
-// AStar implements the A* shortest-path algorithm with a heuristic approximator.
+// AStar implements the A* shortest-path algorithm.
 type AStar struct {
 	AbstractRoutingAlgorithm
 	fromMap      map[int]*SPTEntry
@@ -24,7 +24,7 @@ type AStar struct {
 }
 
 func NewAStar(graph storage.Graph, w weighting.Weighting, tMode routingutil.TraversalMode) *AStar {
-	size := min(max(200, graph.GetNodes()/10), 2000)
+	size := min(max(graph.GetNodes()/10, 200), 2000)
 	a := &AStar{
 		AbstractRoutingAlgorithm: NewAbstractRoutingAlgorithm(graph, w, tMode),
 		to:                       -1,
@@ -68,7 +68,7 @@ func (a *AStar) CalcPathEdgeToEdge(from, to, fromOutEdge, toInEdge int) *Path {
 		return a.extractPath()
 	}
 
-	startEntry := NewAStarSPTEntryRoot(from, weightToGoal, 0)
+	startEntry := NewSPTEntryWithHeuristic(util.NoEdge, from, weightToGoal, 0, nil)
 	heap.Push(&a.fromHeap, startEntry)
 	if !a.TraversalMode.IsEdgeBased() {
 		a.fromMap[from] = startEntry
@@ -119,7 +119,7 @@ func (a *AStar) runAlgo() {
 				if ase != nil {
 					ase.Deleted = true
 				}
-				ase = NewAStarSPTEntry(iter.GetEdge(), neighborNode, estimationFullWeight, tmpWeight, a.currEdge)
+				ase = NewSPTEntryWithHeuristic(iter.GetEdge(), neighborNode, estimationFullWeight, tmpWeight, a.currEdge)
 				a.fromMap[traversalID] = ase
 				heap.Push(&a.fromHeap, ase)
 			}

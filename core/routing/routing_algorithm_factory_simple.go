@@ -8,7 +8,6 @@ import (
 	"gohopper/core/storage"
 )
 
-// RoutingAlgorithmFactorySimple creates standard routing algorithms without preparation.
 type RoutingAlgorithmFactorySimple struct{}
 
 func (f *RoutingAlgorithmFactorySimple) CreateAlgo(g storage.Graph, w weighting.Weighting, opts AlgorithmOptions) RoutingAlgorithm {
