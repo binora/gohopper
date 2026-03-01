@@ -18,7 +18,9 @@ func (f *RoutingAlgorithmFactorySimple) CreateAlgo(g storage.Graph, w weighting.
 	switch algoStr {
 	case AlgoDijkstra:
 		ra = NewDijkstra(g, w, opts.TraversalMode)
-	case AlgoDijkstraBi, AlgoAStar, AlgoAStarBi, "", AlgoDijkstraOneToMany, AlgoAltRoute:
+	case AlgoDijkstraBi:
+		ra = NewDijkstraBidirectionRef(g, w, opts.TraversalMode)
+	case AlgoAStar, AlgoAStarBi, "", AlgoDijkstraOneToMany, AlgoAltRoute:
 		panic(fmt.Sprintf("algorithm %q not yet implemented", algoStr))
 	default:
 		panic(fmt.Sprintf("algorithm %q not found", algoStr))
