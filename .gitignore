@@ -42,6 +42,7 @@ cgiarprovider/
 # Keep fixture datasets when intentionally added under testdata
 !testdata/**/*.pbf
 !testdata/**/*.osm
+!testdata/**/*.osm.gz
 
 # Frontend/node artifacts (for future web modules)
 **/node_modules/

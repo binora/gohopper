@@ -49,6 +49,12 @@ jobs:
             sudo apt-get install -y jq
           fi
 
+      - name: Cache GraphHopper JAR
+        uses: actions/cache@v4
+        with:
+          path: /tmp/graphhopper-web-11.0.jar
+          key: gh-jar-graphhopper-web-11.0
+
       - name: Run Route Conformance (Pipeline-only)
         run: make conformance
 

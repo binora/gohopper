@@ -4,7 +4,9 @@ set -euo pipefail
 GO=${GO:-go}
 GH_JAR=${GH_JAR:-/tmp/graphhopper-web-11.0.jar}
 GH_JAR_URL=${GH_JAR_URL:-https://repo1.maven.org/maven2/com/graphhopper/graphhopper-web/11.0/graphhopper-web-11.0.jar}
-OSM_FIXTURE=${OSM_FIXTURE:-/tmp/monaco.osm.gz}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OSM_FIXTURE=${OSM_FIXTURE:-$REPO_ROOT/testdata/conformance/monaco.osm.gz}
 OSM_FIXTURE_URL=${OSM_FIXTURE_URL:-https://raw.githubusercontent.com/graphhopper/graphhopper/11.x/core/files/monaco.osm.gz}
 
 GH_CONFIG=${GH_CONFIG:-/tmp/gh-config.yml}
@@ -21,13 +23,14 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-curl -fsSL -o "$GH_JAR" "$GH_JAR_URL"
-curl -fsSL -o "$OSM_FIXTURE" "$OSM_FIXTURE_URL"
+[ -f "$GH_JAR" ] || curl -fsSL -o "$GH_JAR" "$GH_JAR_URL"
+[ -f "$OSM_FIXTURE" ] || curl -fsSL -o "$OSM_FIXTURE" "$OSM_FIXTURE_URL"
 
-cat > "$GH_CONFIG" <<'YAML'
+cat > "$GH_CONFIG" <<YAML
 graphhopper:
-  datareader.file: /tmp/monaco.osm.gz
+  datareader.file: $OSM_FIXTURE
   graph.location: /tmp/gh-cache
+  import.osm.ignored_highways: footway,construction,cycleway,path,steps
   profiles:
     - name: car
       custom_model_files: [car.json]
@@ -50,9 +53,9 @@ logging:
     - type: console
 YAML
 
-cat > "$GO_CONFIG" <<'YAML'
+cat > "$GO_CONFIG" <<YAML
 graphhopper:
-  datareader.file: /tmp/monaco.osm.gz
+  datareader.file: $OSM_FIXTURE
   graph.location: /tmp/go-cache
   profiles:
     - name: car
@@ -72,7 +75,7 @@ logging:
     - type: console
 YAML
 
-java -Ddw.graphhopper.datareader.file=/tmp/monaco.osm.gz \
+java -Ddw.graphhopper.datareader.file="$OSM_FIXTURE" \
   -jar "$GH_JAR" server "$GH_CONFIG" > "$GH_LOG" 2>&1 &
 gh_pid=$!
 
