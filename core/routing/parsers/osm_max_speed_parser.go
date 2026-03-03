@@ -12,9 +12,10 @@ import (
 )
 
 const (
+	// MaxSpeedNone is the internal representation for maxspeed=none.
 	MaxSpeedNone = -1.0
 	// Minimum threshold in km/h below which we treat as invalid (3 mph ≈ 4.828).
-	minMaxSpeed = 4.828
+	minMaxSpeed = 4.8
 )
 
 var maxSpeedPattern = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)\s*(.*?)$`)
@@ -36,11 +37,9 @@ func (p *OSMMaxSpeedParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIntAc
 		return
 	}
 	if fwd != ev.MaxSpeedMissing {
-		fwd = math.Min(fwd, ev.MaxSpeed150)
 		p.maxSpeedEnc.SetDecimal(false, edgeID, edgeIntAccess, fwd)
 	}
 	if bwd != ev.MaxSpeedMissing {
-		bwd = math.Min(bwd, ev.MaxSpeed150)
 		p.maxSpeedEnc.SetDecimal(true, edgeID, edgeIntAccess, bwd)
 	}
 }
@@ -53,36 +52,37 @@ func ParseMaxSpeed(way *reader.ReaderWay, reverse bool) float64 {
 		dirKey = "maxspeed:backward"
 	}
 
-	// Direction-specific tag takes priority.
-	dirVal := way.GetTag(dirKey)
-	if dirVal != "" {
-		return ParseMaxspeedString(dirVal, way)
+	dirSpeed := parseMaxSpeedTag(way, dirKey)
+	if dirSpeed != ev.MaxSpeedMissing {
+		return dirSpeed
 	}
+	return parseMaxSpeedTag(way, "maxspeed")
+}
 
-	// For forward, fall back to maxspeed. For reverse only if no forward-specific tag exists.
-	if reverse {
-		fwdVal := way.GetTag("maxspeed:forward")
-		if fwdVal != "" {
-			// maxspeed:forward was set, so reverse uses maxspeed or missing.
-			return ParseMaxspeedString(way.GetTag("maxspeed"), way)
-		}
+// parseMaxSpeedTag parses a single maxspeed tag and handles the none+highway logic.
+func parseMaxSpeedTag(way *reader.ReaderWay, tag string) float64 {
+	maxSpeed := ParseMaxspeedString(way.GetTag(tag))
+	if maxSpeed != ev.MaxSpeedMissing && maxSpeed != MaxSpeedNone {
+		return math.Min(ev.MaxSpeed150, maxSpeed)
 	}
-
-	return ParseMaxspeedString(way.GetTag("maxspeed"), way)
+	if maxSpeed == MaxSpeedNone && way.HasTag("highway", "motorway", "motorway_link", "trunk", "trunk_link", "primary") {
+		return ev.MaxSpeed150
+	}
+	return ev.MaxSpeedMissing
 }
 
 // ParseMaxspeedString parses a maxspeed string value to km/h.
-// Returns ev.MaxSpeedMissing for invalid values, MaxSpeedNone for "none".
-func ParseMaxspeedString(str string, way *reader.ReaderWay) float64 {
+// Returns ev.MaxSpeedMissing for invalid values, MaxSpeedNone for "none"/"unlimited".
+func ParseMaxspeedString(str string) float64 {
 	if str == "" {
 		return ev.MaxSpeedMissing
 	}
 
 	str = strings.TrimSpace(str)
-	if str == "none" || str == "unlimited" {
-		return handleNone(way)
-	}
-	if str == "walk" || str == "living_street" {
+	switch str {
+	case "none", "unlimited":
+		return MaxSpeedNone
+	case "walk", "living_street":
 		return 6
 	}
 
@@ -97,12 +97,12 @@ func ParseMaxspeedString(str string, way *reader.ReaderWay) float64 {
 	}
 
 	unit := strings.TrimSpace(strings.ToLower(m[2]))
-	switch {
-	case unit == "" || unit == "km/h" || unit == "kmh" || unit == "kph":
-		// km/h — no conversion
-	case unit == "mph":
+	switch unit {
+	case "", "km/h", "kmh", "kph":
+		// already in km/h
+	case "mph":
 		val *= 1.609344
-	case unit == "knots":
+	case "knots":
 		val *= 1.852
 	default:
 		return ev.MaxSpeedMissing
@@ -111,21 +111,5 @@ func ParseMaxspeedString(str string, way *reader.ReaderWay) float64 {
 	if val < minMaxSpeed {
 		return ev.MaxSpeedMissing
 	}
-	if val > ev.MaxSpeed150 {
-		return ev.MaxSpeed150
-	}
 	return val
-}
-
-func handleNone(way *reader.ReaderWay) float64 {
-	highway := ""
-	if way != nil {
-		highway = way.GetTag("highway")
-	}
-	switch highway {
-	case "motorway", "motorway_link", "trunk", "trunk_link", "primary":
-		return ev.MaxSpeed150
-	default:
-		return ev.MaxSpeedMissing
-	}
 }

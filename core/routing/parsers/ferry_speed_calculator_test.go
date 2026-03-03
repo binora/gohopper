@@ -1,6 +1,7 @@
 package parsers
 
 import (
+	"math"
 	"testing"
 
 	"gohopper/core/reader"
@@ -22,7 +23,7 @@ func TestFerrySpeed(t *testing.T) {
 
 	edgeIntAccess := ev.NewArrayEdgeIntAccess(1)
 	edgeID := 0
-	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.NewIntsRef(0))
+	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.EmptyIntsRef)
 	assert.InDelta(t, 44, ferrySpeedEnc.GetDecimal(false, edgeID, edgeIntAccess), 1)
 
 	// Shuttle train.
@@ -33,7 +34,7 @@ func TestFerrySpeed(t *testing.T) {
 	way.SetTag("way_distance", 50000.0)
 	way.SetTag("speed_from_duration", 50.0/(35.0/60))
 	edgeIntAccess = ev.NewArrayEdgeIntAccess(1)
-	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.NewIntsRef(0))
+	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.EmptyIntsRef)
 	assert.InDelta(t, 62, ferrySpeedEnc.GetDecimal(false, edgeID, edgeIntAccess), 1)
 
 	// Very short and slow ferry.
@@ -43,7 +44,7 @@ func TestFerrySpeed(t *testing.T) {
 	way.SetTag("way_distance", 100.0)
 	way.SetTag("speed_from_duration", 0.1/(12.0/60))
 	edgeIntAccess = ev.NewArrayEdgeIntAccess(1)
-	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.NewIntsRef(0))
+	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.EmptyIntsRef)
 	assert.InDelta(t, 2, ferrySpeedEnc.GetDecimal(false, edgeID, edgeIntAccess), 1)
 
 	// Missing duration: short ferry.
@@ -52,7 +53,7 @@ func TestFerrySpeed(t *testing.T) {
 	way.SetTag("motorcar", "yes")
 	way.SetTag("edge_distance", 100.0)
 	edgeIntAccess = ev.NewArrayEdgeIntAccess(1)
-	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.NewIntsRef(0))
+	calc.HandleWayTags(edgeID, edgeIntAccess, way, storage.EmptyIntsRef)
 	assert.InDelta(t, 2, ferrySpeedEnc.GetDecimal(false, edgeID, edgeIntAccess), 1)
 }
 
@@ -80,8 +81,8 @@ func TestRawSpeed(t *testing.T) {
 	d1000 := 1000.0
 
 	// speed_from_duration set
-	checkSpeed(&s30, nil, float64(int(30/1.4+0.5)))
-	checkSpeed(&s45, nil, float64(int(45/1.4+0.5)))
+	checkSpeed(&s30, nil, math.Round(30.0/1.4))
+	checkSpeed(&s45, nil, math.Round(45.0/1.4))
 	// Above max (capped)
 	checkSpeed(&s100, nil, ferrySpeedEnc.GetMaxStorableDecimal())
 	// Below smallest storable

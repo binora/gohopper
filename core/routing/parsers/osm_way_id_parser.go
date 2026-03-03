@@ -18,10 +18,9 @@ func NewOSMWayIDParser(wayIDEnc ev.IntEncodedValue) *OSMWayIDParser {
 }
 
 func (p *OSMWayIDParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIntAccess, way *reader.ReaderWay, _ *storage.IntsRef) {
-	osmWayID := way.GetID()
-	if osmWayID > int64(p.wayIDEnc.GetMaxStorableInt()) {
-		panic(fmt.Sprintf("Cannot store OSM way ID %d because the osm_way_id encoded value only allows values up to %d.",
-			osmWayID, p.wayIDEnc.GetMaxStorableInt()))
+	id := way.GetID()
+	if id > int64(p.wayIDEnc.GetMaxStorableInt()) {
+		panic(fmt.Sprintf("cannot store OSM way ID %d: osm_way_id encoded value max is %d", id, p.wayIDEnc.GetMaxStorableInt()))
 	}
-	p.wayIDEnc.SetInt(false, edgeID, edgeIntAccess, int32(osmWayID))
+	p.wayIDEnc.SetInt(false, edgeID, edgeIntAccess, int32(id))
 }

@@ -14,28 +14,29 @@ type AbstractAverageSpeedParser struct {
 	ferrySpeedEnc ev.DecimalEncodedValue
 }
 
-func newAbstractAverageSpeedParser(avgSpeedEnc ev.DecimalEncodedValue, ferrySpeedEnc ev.DecimalEncodedValue) *AbstractAverageSpeedParser {
+func newAbstractAverageSpeedParser(avgSpeedEnc, ferrySpeedEnc ev.DecimalEncodedValue) *AbstractAverageSpeedParser {
 	return &AbstractAverageSpeedParser{
 		avgSpeedEnc:   avgSpeedEnc,
 		ferrySpeedEnc: ferrySpeedEnc,
 	}
 }
 
-func (p *AbstractAverageSpeedParser) GetAverageSpeedEnc() ev.DecimalEncodedValue { return p.avgSpeedEnc }
+func (p *AbstractAverageSpeedParser) GetAverageSpeedEnc() ev.DecimalEncodedValue {
+	return p.avgSpeedEnc
+}
 
-// HandleWayTags should be overridden by the concrete parser.
-func (p *AbstractAverageSpeedParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIntAccess, way *reader.ReaderWay, _ *storage.IntsRef) {
+func (p *AbstractAverageSpeedParser) HandleWayTags(_ int, _ ev.EdgeIntAccess, _ *reader.ReaderWay, _ *storage.IntsRef) {
 	panic("AbstractAverageSpeedParser.HandleWayTags should not be called directly")
 }
 
-// SetSpeed sets the speed, clamping to the smallest non-zero value.
+// SetSpeed sets the speed, clamping to the smallest non-zero value if needed.
 func (p *AbstractAverageSpeedParser) SetSpeed(reverse bool, edgeID int, edgeIntAccess ev.EdgeIntAccess, speed float64) {
-	smallestNonZero := p.avgSpeedEnc.GetSmallestNonZeroValue()
-	if speed < smallestNonZero/2 {
-		panic(fmt.Sprintf("Speed was %v but cannot be lower than %v/2", speed, smallestNonZero))
+	min := p.avgSpeedEnc.GetSmallestNonZeroValue()
+	if speed < min/2 {
+		panic(fmt.Sprintf("speed was %v but cannot be lower than %v/2", speed, min))
 	}
-	if speed < smallestNonZero {
-		speed = smallestNonZero
+	if speed < min {
+		speed = min
 	}
 	p.avgSpeedEnc.SetDecimal(reverse, edgeID, edgeIntAccess, speed)
 }

@@ -42,7 +42,7 @@ func ToOSMRestrictions(mode util.TransportationMode) []string {
 }
 
 func (p *OSMRoadAccessParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIntAccess, way *reader.ReaderWay, _ *storage.IntsRef) {
-	var bestAccess ev.RoadAccess
+	bestAccess := ev.RoadAccessYes
 	found := false
 
 	for _, key := range p.restrictionKeys {
@@ -50,11 +50,8 @@ func (p *OSMRoadAccessParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeInt
 		if val == "" {
 			continue
 		}
-		// Handle semicolon-separated values — pick the least restrictive
-		parts := strings.Split(val, ";")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			ra := ev.RoadAccessFind(part)
+		for _, part := range strings.Split(val, ";") {
+			ra := ev.RoadAccessFind(strings.TrimSpace(part))
 			if !found || ra < bestAccess {
 				bestAccess = ra
 				found = true

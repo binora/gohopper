@@ -10,23 +10,23 @@ import (
 )
 
 var carHighwayValues = map[string]bool{
-	"motorway":      true,
-	"motorway_link": true,
-	"trunk":         true,
-	"trunk_link":    true,
-	"primary":       true,
-	"primary_link":  true,
-	"secondary":     true,
+	"motorway":       true,
+	"motorway_link":  true,
+	"trunk":          true,
+	"trunk_link":     true,
+	"primary":        true,
+	"primary_link":   true,
+	"secondary":      true,
 	"secondary_link": true,
-	"tertiary":      true,
-	"tertiary_link": true,
-	"unclassified":  true,
-	"residential":   true,
-	"living_street": true,
-	"service":       true,
-	"road":          true,
-	"track":         true,
-	"pedestrian":    true,
+	"tertiary":       true,
+	"tertiary_link":  true,
+	"unclassified":   true,
+	"residential":    true,
+	"living_street":  true,
+	"service":        true,
+	"road":           true,
+	"track":          true,
+	"pedestrian":     true,
 }
 
 var carTrackTypeValues = map[string]bool{
@@ -37,18 +37,21 @@ var carTrackTypeValues = map[string]bool{
 }
 
 var carBarriers = map[string]bool{
-	"kissing_gate":      true,
-	"fence":             true,
-	"bollard":           true,
-	"stile":             true,
-	"turnstile":         true,
-	"cycle_barrier":     true,
+	"kissing_gate":       true,
+	"fence":              true,
+	"bollard":            true,
+	"stile":              true,
+	"turnstile":          true,
+	"cycle_barrier":      true,
 	"motorcycle_barrier": true,
-	"block":             true,
-	"bus_trap":          true,
-	"sump_buster":       true,
-	"jersey_barrier":    true,
+	"block":              true,
+	"bus_trap":           true,
+	"sump_buster":        true,
+	"jersey_barrier":     true,
 }
+
+// directionPrefixes are the OSM key prefixes used for directional access checks.
+var directionPrefixes = []string{"vehicle", "motor_vehicle", "motorcar"}
 
 // CarAccessParser determines whether a car can use a way.
 type CarAccessParser struct {
@@ -56,19 +59,16 @@ type CarAccessParser struct {
 }
 
 // NewCarAccessParser creates a new car access parser.
-func NewCarAccessParser(lookup ev.EncodedValueLookup, blockFords bool, blockPrivate bool) *CarAccessParser {
+func NewCarAccessParser(lookup ev.EncodedValueLookup, blockFords, blockPrivate bool) *CarAccessParser {
 	accessEnc := lookup.GetBooleanEncodedValue(ev.VehicleAccessKey("car"))
 	roundaboutEnc := lookup.GetBooleanEncodedValue(ev.RoundaboutKey)
 
-	restrictionKeys := ToOSMRestrictions(util.TransportationModeCar)
-	base := newAbstractAccessParser(accessEnc, roundaboutEnc, restrictionKeys)
+	base := newAbstractAccessParser(accessEnc, roundaboutEnc, ToOSMRestrictions(util.TransportationModeCar))
 
-	// Additional restricted values for car.
 	base.restrictedValues["agricultural"] = true
 	base.restrictedValues["forestry"] = true
 	base.restrictedValues["delivery"] = true
 
-	// Car-specific barriers.
 	for k, v := range carBarriers {
 		base.barriers[k] = v
 	}
@@ -87,9 +87,8 @@ func NewCarAccessParser(lookup ev.EncodedValueLookup, blockFords bool, blockPriv
 func (p *CarAccessParser) GetAccess(way *reader.ReaderWay) util.WayAccess {
 	highway := way.GetTag("highway")
 
-	// Check pedestrian-specific handling.
 	if highway == "pedestrian" {
-		return p.handlePedestrianAccess(way)
+		return p.pedestrianAccess(way)
 	}
 
 	access := p.getAccess(way, carHighwayValues, carTrackTypeValues)
@@ -97,7 +96,6 @@ func (p *CarAccessParser) GetAccess(way *reader.ReaderWay) util.WayAccess {
 		return access
 	}
 
-	// Exclude footway/cycleway/steps even if motor_vehicle=yes for specific tags.
 	if highway == "footway" || highway == "cycleway" || highway == "steps" {
 		return util.WayAccessCanSkip
 	}
@@ -105,11 +103,11 @@ func (p *CarAccessParser) GetAccess(way *reader.ReaderWay) util.WayAccess {
 	return access
 }
 
-func (p *CarAccessParser) handlePedestrianAccess(way *reader.ReaderWay) util.WayAccess {
-	// For pedestrian highways, only allow if explicit motor_vehicle access is allowed.
+// pedestrianAccess checks whether motor vehicle access is explicitly allowed
+// on a pedestrian highway, including conditional tags.
+func (p *CarAccessParser) pedestrianAccess(way *reader.ReaderWay) util.WayAccess {
 	for _, key := range p.restrictionKeys {
-		val := way.GetTag(key)
-		if val != "" {
+		if val := way.GetTag(key); val != "" {
 			if p.allowedValues[val] {
 				return util.WayAccessWay
 			}
@@ -117,16 +115,14 @@ func (p *CarAccessParser) handlePedestrianAccess(way *reader.ReaderWay) util.Way
 				return util.WayAccessCanSkip
 			}
 		}
-		// Check conditional
+
 		condVal := way.GetTag(key + ":conditional")
-		if condVal != "" {
-			idx := strings.Index(condVal, "@")
-			if idx >= 0 {
-				accessPart := strings.TrimSpace(condVal[:idx])
-				if p.allowedValues[accessPart] {
-					return util.WayAccessWay
-				}
-			}
+		if condVal == "" {
+			continue
+		}
+		idx := strings.Index(condVal, "@")
+		if idx >= 0 && p.allowedValues[strings.TrimSpace(condVal[:idx])] {
+			return util.WayAccessWay
 		}
 	}
 	return util.WayAccessCanSkip
@@ -139,44 +135,34 @@ func (p *CarAccessParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIntAcce
 		return
 	}
 
-	if !access.IsFerry() {
-		// Check oneway tags.
-		if isOneway(way) {
-			p.accessEnc.SetBool(false, edgeID, edgeIntAccess, true)
-		} else if isReverseOneway(way) {
-			p.accessEnc.SetBool(true, edgeID, edgeIntAccess, true)
-		} else if p.isForwardBlocked(way) {
-			p.accessEnc.SetBool(true, edgeID, edgeIntAccess, true)
-		} else if p.isBackwardBlocked(way) {
-			p.accessEnc.SetBool(false, edgeID, edgeIntAccess, true)
-		} else {
-			p.accessEnc.SetBool(false, edgeID, edgeIntAccess, true)
-			p.accessEnc.SetBool(true, edgeID, edgeIntAccess, true)
-		}
+	if access.IsFerry() {
+		p.accessEnc.SetBool(false, edgeID, edgeIntAccess, true)
+		p.accessEnc.SetBool(true, edgeID, edgeIntAccess, true)
+		return
+	}
 
-		// Check roundabout: force oneway.
-		if p.roundaboutEnc.GetBool(false, edgeID, edgeIntAccess) {
-			p.accessEnc.SetBool(true, edgeID, edgeIntAccess, false)
-		}
+	if isOneway(way) {
+		p.accessEnc.SetBool(false, edgeID, edgeIntAccess, true)
+	} else if isReverseOneway(way) {
+		p.accessEnc.SetBool(true, edgeID, edgeIntAccess, true)
+	} else if isDirectionBlocked(way, "forward") {
+		p.accessEnc.SetBool(true, edgeID, edgeIntAccess, true)
+	} else if isDirectionBlocked(way, "backward") {
+		p.accessEnc.SetBool(false, edgeID, edgeIntAccess, true)
 	} else {
-		// Ferry: bidirectional.
 		p.accessEnc.SetBool(false, edgeID, edgeIntAccess, true)
 		p.accessEnc.SetBool(true, edgeID, edgeIntAccess, true)
 	}
-}
 
-func (p *CarAccessParser) isForwardBlocked(way *reader.ReaderWay) bool {
-	for _, prefix := range []string{"vehicle", "motor_vehicle", "motorcar"} {
-		if way.HasTag(prefix+":forward", "no") {
-			return true
-		}
+	if p.roundaboutEnc.GetBool(false, edgeID, edgeIntAccess) {
+		p.accessEnc.SetBool(true, edgeID, edgeIntAccess, false)
 	}
-	return false
 }
 
-func (p *CarAccessParser) isBackwardBlocked(way *reader.ReaderWay) bool {
-	for _, prefix := range []string{"vehicle", "motor_vehicle", "motorcar"} {
-		if way.HasTag(prefix+":backward", "no") {
+// isDirectionBlocked returns true if any motor vehicle prefix blocks the given direction.
+func isDirectionBlocked(way *reader.ReaderWay, direction string) bool {
+	for _, prefix := range directionPrefixes {
+		if way.HasTag(prefix+":"+direction, "no") {
 			return true
 		}
 	}

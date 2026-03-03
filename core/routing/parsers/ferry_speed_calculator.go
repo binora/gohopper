@@ -21,18 +21,18 @@ func NewFerrySpeedCalculator(ferrySpeedEnc ev.DecimalEncodedValue) *FerrySpeedCa
 // IsFerry returns true if the way represents a ferry or shuttle train route.
 func IsFerry(way *reader.ReaderWay) bool {
 	route := way.GetTag("route")
-	if route == "ferry" && way.GetTag("ferry") != "no" {
-		return true
+	switch route {
+	case "ferry":
+		return way.GetTag("ferry") != "no"
+	case "shuttle_train":
+		return way.GetTag("shuttle_train") != "no"
+	default:
+		return false
 	}
-	if route == "shuttle_train" && way.GetTag("shuttle_train") != "no" {
-		return true
-	}
-	return false
 }
 
 func (c *FerrySpeedCalculator) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIntAccess, way *reader.ReaderWay, _ *storage.IntsRef) {
-	speed := GetFerrySpeed(way)
-	speed = MinMax(speed, c.ferrySpeedEnc)
+	speed := MinMax(GetFerrySpeed(way), c.ferrySpeedEnc)
 	c.ferrySpeedEnc.SetDecimal(false, edgeID, edgeIntAccess, speed)
 }
 
@@ -40,21 +40,20 @@ func (c *FerrySpeedCalculator) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIn
 func GetFerrySpeed(way *reader.ReaderWay) float64 {
 	if v := way.GetTagWithDefault("speed_from_duration", nil); v != nil {
 		if speed, ok := toFloat64(v); ok {
-			return speed / 1.4
+			return math.Round(speed / 1.4)
 		}
 	}
 
 	v := way.GetTagWithDefault("edge_distance", nil)
 	if v == nil {
-		panic(fmt.Sprintf("No speed_from_duration or edge_distance for ferry way: %d", way.GetID()))
+		panic(fmt.Sprintf("no speed_from_duration or edge_distance for ferry way: %d", way.GetID()))
 	}
-	edgeDistance, ok := toFloat64(v)
+	dist, ok := toFloat64(v)
 	if !ok {
-		panic(fmt.Sprintf("Invalid edge_distance for ferry way: %d", way.GetID()))
+		panic(fmt.Sprintf("invalid edge_distance for ferry way: %d", way.GetID()))
 	}
 
-	// For short ferries use minimum speed, for longer ones use 6 km/h.
-	if edgeDistance < 500 {
+	if dist < 500 {
 		return 1
 	}
 	return 6
@@ -75,7 +74,7 @@ func toFloat64(v any) (float64, bool) {
 	}
 }
 
-// MinMax clamps the speed to the range [smallestNonZero, maxStorable].
+// MinMax clamps speed to [smallestNonZero, maxStorable].
 func MinMax(speed float64, enc ev.DecimalEncodedValue) float64 {
 	return math.Min(enc.GetMaxStorableDecimal(), math.Max(speed, enc.GetSmallestNonZeroValue()))
 }

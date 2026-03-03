@@ -11,9 +11,9 @@ import (
 
 // AbstractAccessParser is the base for vehicle access parsers.
 type AbstractAccessParser struct {
-	accessEnc       ev.BooleanEncodedValue
-	roundaboutEnc   ev.BooleanEncodedValue
-	restrictionKeys []string
+	accessEnc        ev.BooleanEncodedValue
+	roundaboutEnc    ev.BooleanEncodedValue
+	restrictionKeys  []string
 	restrictedValues map[string]bool
 	allowedValues    map[string]bool
 	barriers         map[string]bool
@@ -21,7 +21,7 @@ type AbstractAccessParser struct {
 	blockPrivate     bool
 }
 
-func newAbstractAccessParser(accessEnc ev.BooleanEncodedValue, roundaboutEnc ev.BooleanEncodedValue, restrictionKeys []string) *AbstractAccessParser {
+func newAbstractAccessParser(accessEnc, roundaboutEnc ev.BooleanEncodedValue, restrictionKeys []string) *AbstractAccessParser {
 	return &AbstractAccessParser{
 		accessEnc:       accessEnc,
 		roundaboutEnc:   roundaboutEnc,
@@ -50,10 +50,7 @@ func newAbstractAccessParser(accessEnc ev.BooleanEncodedValue, roundaboutEnc ev.
 func (p *AbstractAccessParser) GetAccessEnc() ev.BooleanEncodedValue { return p.accessEnc }
 func (p *AbstractAccessParser) IsBlockFords() bool                   { return p.blockFords }
 
-// HandleWayTags dispatches to the subclass-specific implementation.
-// This is the 4-arg version required by TagParser interface.
-func (p *AbstractAccessParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIntAccess, way *reader.ReaderWay, _ *storage.IntsRef) {
-	// This should be overridden by the concrete parser (CarAccessParser etc.)
+func (p *AbstractAccessParser) HandleWayTags(_ int, _ ev.EdgeIntAccess, _ *reader.ReaderWay, _ *storage.IntsRef) {
 	panic("AbstractAccessParser.HandleWayTags should not be called directly")
 }
 
@@ -61,106 +58,68 @@ func (p *AbstractAccessParser) HandleWayTags(edgeID int, edgeIntAccess ev.EdgeIn
 func (p *AbstractAccessParser) IsBarrier(node *reader.ReaderNode) bool {
 	barrier := node.GetTag("barrier")
 	if barrier == "" {
-		return false
+		return p.isFordBlocked(node)
 	}
 
-	if p.blockFords && (node.HasTag("ford", "yes") || node.HasTag("ford", "pond")) {
-		return true
+	for _, key := range p.restrictionKeys {
+		val := node.GetTag(key)
+		if val == "" {
+			continue
+		}
+		if p.restrictedValues[val] {
+			return true
+		}
+		if p.allowedValues[val] {
+			return false
+		}
 	}
 
 	if p.barriers[barrier] {
-		// Check if there is an explicit access override.
-		for _, key := range p.restrictionKeys {
-			val := node.GetTag(key)
-			if val != "" {
-				if p.allowedValues[val] {
-					return false
-				}
-				if p.restrictedValues[val] {
-					return true
-				}
-			}
-		}
-		// Check generic access/bicycle/foot etc.
-		accessVal := node.GetTag("access")
-		if accessVal != "" && p.allowedValues[accessVal] {
-			return false
-		}
 		return true
 	}
-	return false
+
+	return p.isFordBlocked(node)
 }
 
-// HandleBarrierEdge sets access for a barrier edge (both directions blocked).
+func (p *AbstractAccessParser) isFordBlocked(node *reader.ReaderNode) bool {
+	return p.blockFords && (node.HasTag("ford", "yes") || node.HasTag("ford", "pond"))
+}
+
+// HandleBarrierEdge blocks access in both directions for a barrier edge.
 func (p *AbstractAccessParser) HandleBarrierEdge(edgeID int, edgeIntAccess ev.EdgeIntAccess, _ map[string]any) {
 	p.accessEnc.SetBool(false, edgeID, edgeIntAccess, false)
 	p.accessEnc.SetBool(true, edgeID, edgeIntAccess, false)
 }
 
-// isOneway returns true if the way is oneway in the forward direction.
 func isOneway(way *reader.ReaderWay) bool {
 	ow := way.GetTag("oneway")
 	return ow == "yes" || ow == "1" || ow == "true"
 }
 
-// isReverseOneway returns true if the way is oneway in the reverse direction.
 func isReverseOneway(way *reader.ReaderWay) bool {
 	ow := way.GetTag("oneway")
 	return ow == "-1" || ow == "reverse"
 }
 
-// isValueAllowed checks if at least one semicolon-separated part is in the allowed set.
-func isValueAllowed(value string, allowed map[string]bool) bool {
+// anySemicolonPartInSet returns true if any semicolon-separated part of value is in the set.
+func anySemicolonPartInSet(value string, set map[string]bool) bool {
 	for _, part := range strings.Split(value, ";") {
-		part = strings.TrimSpace(part)
-		if allowed[part] {
+		if set[strings.TrimSpace(part)] {
 			return true
 		}
 	}
 	return false
 }
 
-// isValueRestricted checks if ALL semicolon-separated parts are in the restricted set.
-func isValueRestricted(value string, restricted map[string]bool) bool {
-	parts := strings.Split(value, ";")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if !restricted[part] {
-			return false
-		}
-	}
-	return true
-}
-
 // getAccess determines the WayAccess for a way based on restriction tags.
-func (p *AbstractAccessParser) getAccess(way *reader.ReaderWay, highwayValues map[string]bool, trackTypeValues map[string]bool) util.WayAccess {
+func (p *AbstractAccessParser) getAccess(way *reader.ReaderWay, highwayValues, trackTypeValues map[string]bool) util.WayAccess {
 	highway := way.GetTag("highway")
 
 	if IsFerry(way) {
-		// Check for explicit vehicle restriction on ferry.
-		for _, key := range p.restrictionKeys {
-			val := way.GetTag(key)
-			if val != "" {
-				if p.allowedValues[val] {
-					return util.WayAccessFerry
-				}
-				if p.restrictedValues[val] {
-					return util.WayAccessCanSkip
-				}
-			}
-		}
-		// No explicit restriction — check if highway
-		if highway != "" {
-			return util.WayAccessCanSkip
-		}
-		return util.WayAccessFerry
+		return p.getFerryAccess(way, highway)
 	}
 
-	if highway == "" {
-		return util.WayAccessCanSkip
-	}
-
-	if !highwayValues[highway] {
+	if highway == "" || !highwayValues[highway] {
 		return util.WayAccessCanSkip
 	}
 
@@ -171,29 +130,57 @@ func (p *AbstractAccessParser) getAccess(way *reader.ReaderWay, highwayValues ma
 		}
 	}
 
-	// Check ford
 	if p.blockFords && way.HasTag("ford", "yes") {
-		// Check if there's an explicit allow for our vehicle.
-		for _, key := range p.restrictionKeys {
-			val := way.GetTag(key)
-			if val != "" && p.allowedValues[val] {
-				return util.WayAccessWay
-			}
-		}
-		return util.WayAccessCanSkip
+		return p.getAccessForFord(way)
 	}
 
-	// Check restriction tags in order of specificity.
+	return p.getAccessFromRestrictions(way)
+}
+
+func (p *AbstractAccessParser) getFerryAccess(way *reader.ReaderWay, highway string) util.WayAccess {
+	firstValue := p.firstRestrictionValue(way)
+
+	ferryAllowed := p.allowedValues[firstValue] ||
+		(firstValue == "" && !way.HasTag("foot") && !way.HasTag("bicycle")) ||
+		way.HasTag("hgv", "yes")
+
+	if !ferryAllowed {
+		return util.WayAccessCanSkip
+	}
+	if highway != "" {
+		return util.WayAccessCanSkip
+	}
+	return util.WayAccessFerry
+}
+
+func (p *AbstractAccessParser) firstRestrictionValue(way *reader.ReaderWay) string {
+	for _, key := range p.restrictionKeys {
+		if val := way.GetTag(key); val != "" {
+			return val
+		}
+	}
+	return ""
+}
+
+func (p *AbstractAccessParser) getAccessForFord(way *reader.ReaderWay) util.WayAccess {
+	for _, key := range p.restrictionKeys {
+		if val := way.GetTag(key); val != "" && p.allowedValues[val] {
+			return util.WayAccessWay
+		}
+	}
+	return util.WayAccessCanSkip
+}
+
+func (p *AbstractAccessParser) getAccessFromRestrictions(way *reader.ReaderWay) util.WayAccess {
 	for _, key := range p.restrictionKeys {
 		val := way.GetTag(key)
 		if val == "" {
 			continue
 		}
-		if isValueAllowed(val, p.allowedValues) {
+		if anySemicolonPartInSet(val, p.allowedValues) {
 			return util.WayAccessWay
 		}
-		if isValueRestricted(val, p.restrictedValues) {
-			// Check for temporal conditional override at a higher priority.
+		if anySemicolonPartInSet(val, p.restrictedValues) {
 			if p.hasConditionalOverride(way, key) {
 				return util.WayAccessWay
 			}
@@ -201,7 +188,6 @@ func (p *AbstractAccessParser) getAccess(way *reader.ReaderWay, highwayValues ma
 		}
 	}
 
-	// Check service=emergency_access
 	if way.GetTag("service") == "emergency_access" {
 		return util.WayAccessCanSkip
 	}
@@ -209,7 +195,8 @@ func (p *AbstractAccessParser) getAccess(way *reader.ReaderWay, highwayValues ma
 	return util.WayAccessWay
 }
 
-// hasConditionalOverride checks if a more specific conditional tag could override a restriction.
+// hasConditionalOverride checks whether a higher-priority conditional tag
+// overrides a restriction found at restrictedKey.
 func (p *AbstractAccessParser) hasConditionalOverride(way *reader.ReaderWay, restrictedKey string) bool {
 	for _, key := range p.restrictionKeys {
 		if key == restrictedKey {
@@ -219,13 +206,11 @@ func (p *AbstractAccessParser) hasConditionalOverride(way *reader.ReaderWay, res
 		if condVal == "" {
 			continue
 		}
-		// Extract the access value before the "@"
 		idx := strings.Index(condVal, "@")
 		if idx < 0 {
 			continue
 		}
-		accessPart := strings.TrimSpace(condVal[:idx])
-		if p.allowedValues[accessPart] {
+		if p.allowedValues[strings.TrimSpace(condVal[:idx])] {
 			return true
 		}
 	}
