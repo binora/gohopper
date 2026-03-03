@@ -77,8 +77,6 @@ func (t *GHLongLongBTree) Put(key, value int64) int64 {
 		if t.size%1000000 == 0 {
 			t.Optimize()
 		}
-	}
-	if rv.oldValue == nil {
 		return t.emptyValue
 	}
 	return t.toLong(rv.oldValue, 0)
@@ -112,32 +110,23 @@ func (t *GHLongLongBTree) Optimize() {
 	}
 }
 
-// toLong decodes bytesPerValue bytes from b at the given offset into an int64.
-// The topmost byte is sign-extended; lower bytes are zero-extended.
 func (t *GHLongLongBTree) toLong(b []byte, offset int) int64 {
-	var res int64
 	bpv := t.bytesPerValue
 	// topmost byte: sign-extended
-	// lower bytes: zero-extended (& 0xFF)
-	for i := bpv - 1; i >= 0; i-- {
-		shift := uint(i * 8)
-		if i == bpv-1 {
-			res |= int64(int8(b[offset+i])) << shift
-		} else {
-			res |= int64(b[offset+i]&0xFF) << shift
-		}
+	res := int64(int8(b[offset+bpv-1])) << uint((bpv-1)*8)
+	// lower bytes: zero-extended
+	for i := bpv - 2; i >= 0; i-- {
+		res |= int64(b[offset+i]&0xFF) << uint(i*8)
 	}
 	return res
 }
 
-// FromLong encodes a value into a new byte slice.
 func (t *GHLongLongBTree) FromLong(value int64) []byte {
 	bytes := make([]byte, t.bytesPerValue)
 	t.fromLongInto(bytes, value, 0)
 	return bytes
 }
 
-// ToLong decodes a byte slice to int64. Exported for testing.
 func (t *GHLongLongBTree) ToLong(b []byte) int64 {
 	return t.toLong(b, 0)
 }
@@ -148,8 +137,6 @@ func (t *GHLongLongBTree) fromLongInto(bytes []byte, value int64, offset int) {
 	}
 }
 
-// binarySearch performs a binary search on keys[start..start+length).
-// Returns the index if found, or ^insertionPoint if not found.
 func binarySearch(keys []int64, start, length int, key int64) int {
 	high := start + length
 	low := start - 1
@@ -170,10 +157,9 @@ func binarySearch(keys []int64, start, length int, key int64) int {
 	return ^high
 }
 
-// returnValue is the result of a put operation on a btreeEntry.
 type returnValue struct {
-	oldValue []byte      // nil means new insertion, non-nil means update
-	tree     *btreeEntry // non-nil means a split occurred
+	oldValue []byte
+	tree     *btreeEntry
 }
 
 type btreeEntry struct {
@@ -209,21 +195,18 @@ func (e *btreeEntry) put(key, newValue int64, t *GHLongLongBTree) returnValue {
 
 	index = ^index
 	if e.isLeaf || e.children[index] == nil {
-		// insert into this node
-		rv := returnValue{}
-		rv.tree = e.checkSplitEntry(t)
+		splitTree := e.checkSplitEntry(t)
 		newValueBytes := t.FromLong(newValue)
-		if rv.tree == nil {
+		if splitTree == nil {
 			e.insertKeyValue(index, key, newValueBytes, t)
 		} else if index <= t.splitIndex {
-			rv.tree.children[0].insertKeyValue(index, key, newValueBytes, t)
+			splitTree.children[0].insertKeyValue(index, key, newValueBytes, t)
 		} else {
-			rv.tree.children[1].insertKeyValue(index-t.splitIndex-1, key, newValueBytes, t)
+			splitTree.children[1].insertKeyValue(index-t.splitIndex-1, key, newValueBytes, t)
 		}
-		return rv
+		return returnValue{tree: splitTree}
 	}
 
-	// recurse into child
 	downRV := e.children[index].put(key, newValue, t)
 	if downRV.oldValue != nil {
 		return downRV

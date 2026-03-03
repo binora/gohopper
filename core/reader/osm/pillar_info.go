@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	piLAT = 0 * 4
-	piLON = 1 * 4
-	piELE = 2 * 4
+	latOffset = 0
+	lonOffset = 4
+	eleOffset = 8
 )
 
 // PillarInfo stores temporary lat/lon/ele coordinates for pillar nodes during import.
@@ -36,37 +36,47 @@ func NewPillarInfo(enabled3D bool, dir storage.Directory) *PillarInfo {
 	}
 }
 
-func (p *PillarInfo) Is3D() bool      { return p.enabled3D }
-func (p *PillarInfo) Dimension() int   { if p.enabled3D { return 3 }; return 2 }
+func (p *PillarInfo) Is3D() bool { return p.enabled3D }
+
+func (p *PillarInfo) Dimension() int {
+	if p.enabled3D {
+		return 3
+	}
+	return 2
+}
+
+func (p *PillarInfo) bytePos(nodeID int64) int64 {
+	return nodeID * int64(p.rowSizeBytes)
+}
 
 func (p *PillarInfo) ensureNode(nodeID int64) {
-	tmp := nodeID * int64(p.rowSizeBytes)
-	p.da.EnsureCapacity(tmp + int64(p.rowSizeBytes))
+	pos := p.bytePos(nodeID)
+	p.da.EnsureCapacity(pos + int64(p.rowSizeBytes))
 }
 
 func (p *PillarInfo) SetNode(nodeID int64, lat, lon, ele float64) {
 	p.ensureNode(nodeID)
-	tmp := nodeID * int64(p.rowSizeBytes)
-	p.da.SetInt(tmp+piLAT, util.DegreeToInt(lat))
-	p.da.SetInt(tmp+piLON, util.DegreeToInt(lon))
+	pos := p.bytePos(nodeID)
+	p.da.SetInt(pos+latOffset, util.DegreeToInt(lat))
+	p.da.SetInt(pos+lonOffset, util.DegreeToInt(lon))
 	if p.enabled3D {
-		p.da.SetInt(tmp+piELE, int32(util.EleToUInt(ele)))
+		p.da.SetInt(pos+eleOffset, int32(util.EleToUInt(ele)))
 	}
 }
 
 func (p *PillarInfo) GetLat(id int64) float64 {
-	return util.IntToDegree(p.da.GetInt(id*int64(p.rowSizeBytes) + piLAT))
+	return util.IntToDegree(p.da.GetInt(p.bytePos(id) + latOffset))
 }
 
 func (p *PillarInfo) GetLon(id int64) float64 {
-	return util.IntToDegree(p.da.GetInt(id*int64(p.rowSizeBytes) + piLON))
+	return util.IntToDegree(p.da.GetInt(p.bytePos(id) + lonOffset))
 }
 
 func (p *PillarInfo) GetEle(id int64) float64 {
 	if !p.enabled3D {
 		return math.NaN()
 	}
-	return util.UIntToEle(int(p.da.GetInt(id*int64(p.rowSizeBytes) + piELE)))
+	return util.UIntToEle(int(p.da.GetInt(p.bytePos(id) + eleOffset)))
 }
 
 // Clear removes the temporary DataAccess file.

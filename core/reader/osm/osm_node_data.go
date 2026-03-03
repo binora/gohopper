@@ -9,7 +9,6 @@ import (
 	"gohopper/core/util"
 )
 
-// Node type constants used during pass 1 to classify OSM nodes.
 const (
 	JunctionNode     int64 = -2
 	EmptyNode        int64 = -1
@@ -179,28 +178,12 @@ func (d *OSMNodeData) GetCoordinates(id int64) *GHPoint3D {
 	return nil
 }
 
-// AddCoordinatesToPointList adds the coordinates of the given node to the point list.
 func (d *OSMNodeData) AddCoordinatesToPointList(id int64, pointList *util.PointList) {
-	var lat, lon float64
-	ele := math.NaN()
-	if IsTowerNode(id) {
-		tower := d.IDToTowerNode(id)
-		lat = d.towerNodes.GetLat(tower)
-		lon = d.towerNodes.GetLon(tower)
-		if d.towerNodes.Is3D() {
-			ele = d.towerNodes.GetEle(tower)
-		}
-	} else if IsPillarNode(id) {
-		pillar := d.IDToPillarNode(id)
-		lat = d.pillarNodes.GetLat(pillar)
-		lon = d.pillarNodes.GetLon(pillar)
-		if d.pillarNodes.Is3D() {
-			ele = d.pillarNodes.GetEle(pillar)
-		}
-	} else {
+	pt := d.GetCoordinates(id)
+	if pt == nil {
 		panic("invalid node id")
 	}
-	pointList.Add3D(lat, lon, ele)
+	pointList.Add3D(pt.Lat, pt.Lon, pt.Ele)
 }
 
 // SetTags stores tags for the given node. Can only be called once per node.
