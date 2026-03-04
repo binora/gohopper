@@ -351,35 +351,44 @@ func (h *pass2Handler) splitSegmentAtSplitNodes(parentSegment []SegmentNode, way
 	nd := h.parser.nodeData
 	var segment []SegmentNode
 
-	for i := 0; i < len(parentSegment); i++ {
-		node := parentSegment[i]
-		if nd.IsSplitNode(node.OSMNodeID) {
-			// Do not split this node again (barrier connects two ways, only add edge once).
-			nd.UnsetSplitNode(node.OSMNodeID)
-
-			barrierFrom := node
-			barrierTo := nd.AddCopyOfNode(node)
-			if i == len(parentSegment)-1 {
-				// Ensure barrier node is on the inside of the segment.
-				barrierFrom, barrierTo = barrierTo, barrierFrom
-			}
-
-			if len(segment) > 0 {
-				segment = append(segment, barrierFrom)
-				h.handleSegment(segment, way)
-				segment = nil
-			}
-
-			// Create barrier edge
-			way.SetTag("gh:barrier_edge", "true")
-			h.handleSegment([]SegmentNode{barrierFrom, barrierTo}, way)
-			way.RemoveTag("gh:barrier_edge")
-
-			segment = []SegmentNode{barrierTo}
-		} else {
+	for i, node := range parentSegment {
+		if !nd.IsSplitNode(node.OSMNodeID) {
 			segment = append(segment, node)
+			continue
 		}
+
+		// Consume the split-node marker so the barrier edge is only created once.
+		nd.UnsetSplitNode(node.OSMNodeID)
+
+		// Create two copies: one stays with the preceding segment, one starts the next.
+		// When the barrier is at the end of the parent segment, swap so the copy sits
+		// on the inside (facing the preceding segment).
+		barrierFrom := node
+		barrierTo := nd.AddCopyOfNode(node)
+		if i == len(parentSegment)-1 {
+			barrierFrom, barrierTo = barrierTo, barrierFrom
+		}
+
+		// Finish the preceding segment up to and including barrierFrom.
+		if len(segment) > 0 {
+			segment = append(segment, barrierFrom)
+			h.handleSegment(segment, way)
+			// handleSegment may promote pillar to tower; read back the updated node.
+			barrierFrom = segment[len(segment)-1]
+			segment = nil
+		}
+
+		// Emit the zero-length barrier edge.
+		way.SetTag("gh:barrier_edge", "true")
+		barrierSegment := []SegmentNode{barrierFrom, barrierTo}
+		h.handleSegment(barrierSegment, way)
+		way.RemoveTag("gh:barrier_edge")
+
+		// Start the next segment from the barrier's outgoing copy.
+		// handleSegment may have promoted pillar to tower; read back updated IDs.
+		segment = []SegmentNode{barrierSegment[1]}
 	}
+
 	if len(segment) > 1 {
 		h.handleSegment(segment, way)
 	}

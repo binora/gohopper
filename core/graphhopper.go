@@ -3,11 +3,15 @@ package core
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 
 	"gohopper/core/config"
+	"gohopper/core/reader/osm"
 	"gohopper/core/routing"
+	"gohopper/core/routing/ev"
+	"gohopper/core/routing/parsers"
 	routingutil "gohopper/core/routing/util"
 	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
@@ -26,26 +30,42 @@ type GraphHopper struct {
 	router          *routing.Router
 	encodingManager *routingutil.EncodingManager
 	ghLocation      string
+	osmFile         string
+	storeOnFlush    bool
 	fullyLoaded     bool
 	properties      map[string]string
 	initErr         error
 }
 
 func NewGraphHopper() *GraphHopper {
-	dir := storage.NewRAMDirectory("", false)
-	baseGraph := storage.NewBaseGraphBuilder(4).SetDir(dir).Build()
-	routerConfig := routing.NewRouterConfig()
-	profilesByName := make(map[string]config.Profile)
 	return &GraphHopper{
-		profilesByName: profilesByName,
-		graph:          baseGraph,
-		routerConfig:   routerConfig,
+		profilesByName: make(map[string]config.Profile),
+		routerConfig:   routing.NewRouterConfig(),
 		properties:     make(map[string]string),
+		storeOnFlush:   true,
 	}
+}
+
+func (g *GraphHopper) SetOSMFile(path string) *GraphHopper {
+	g.osmFile = path
+	return g
+}
+
+func (g *GraphHopper) SetGraphHopperLocation(path string) *GraphHopper {
+	g.ghLocation = path
+	return g
+}
+
+func (g *GraphHopper) SetStoreOnFlush(store bool) *GraphHopper {
+	g.storeOnFlush = store
+	return g
 }
 
 func (g *GraphHopper) Init(cfg GraphHopperConfig) *GraphHopper {
 	g.ghLocation = cfg.GetString("graph.location", "graph-cache")
+	if f := cfg.GetString("datareader.file", ""); f != "" {
+		g.osmFile = f
+	}
 	for _, p := range cfg.Profiles {
 		g.profilesByName[p.Name] = p
 	}
@@ -57,34 +77,43 @@ func (g *GraphHopper) ImportOrLoad() error {
 	if g.initErr != nil {
 		return g.initErr
 	}
-	return g.load()
-}
-
-func (g *GraphHopper) load() error {
-	if g.ghLocation == "" {
-		return errors.New("GraphHopperLocation is not specified. Call Init before")
-	}
 	if g.fullyLoaded {
 		return errors.New("graph is already successfully loaded")
 	}
+	if g.ghLocation == "" {
+		return errors.New("GraphHopperLocation is not specified. Call Init or SetGraphHopperLocation before")
+	}
 
+	// Try to load an existing graph cache
+	if loaded, err := g.load(); err != nil {
+		return err
+	} else if loaded {
+		return nil
+	}
+
+	// No existing graph cache — import from OSM file if available
+	if g.osmFile != "" {
+		return g.process()
+	}
+	return nil
+}
+
+func (g *GraphHopper) load() (bool, error) {
 	info, err := os.Stat(g.ghLocation)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Nothing to load yet — no graph cache directory.
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("GraphHopperLocation cannot be an existing file. Has to be either non-existing or a folder: %s", g.ghLocation)
+		return false, fmt.Errorf("GraphHopperLocation cannot be an existing file. Has to be either non-existing or a folder: %s", g.ghLocation)
 	}
 
 	dir := storage.NewGHDirectory(g.ghLocation, storage.DATypeRAMStore)
 	props := storage.NewStorableProperties(dir)
 	if !props.LoadExisting() {
-		// The directory exists but has no properties file — treat as no prior import.
-		return nil
+		return false, nil
 	}
 
 	em := routingutil.FromProperties(props)
@@ -96,7 +125,7 @@ func (g *GraphHopper) load() error {
 		Build()
 
 	if !bg.LoadExisting() {
-		return fmt.Errorf("could not load existing graph from: %s", g.ghLocation)
+		return false, fmt.Errorf("could not load existing graph from: %s", g.ghLocation)
 	}
 
 	g.graph = bg
@@ -106,11 +135,89 @@ func (g *GraphHopper) load() error {
 		g.locationIndex = locationIdx
 	}
 
-	wf := weighting.NewDefaultWeightingFactory(bg, em)
-	g.router = routing.NewRouter(bg, g.locationIndex, g.routerConfig, g.profilesByName, wf, em)
+	g.buildRouter()
+	g.fullyLoaded = true
+	return true, nil
+}
+
+// process imports an OSM file, builds the graph, location index, and optionally flushes to disk.
+func (g *GraphHopper) process() error {
+	log.Printf("Importing OSM file: %s", g.osmFile)
+
+	em := g.buildEncodingManager()
+	osmParsers := g.buildOSMParsers(em)
+
+	dir := storage.NewGHDirectory(g.ghLocation, storage.DATypeRAMStore)
+	graph := storage.NewBaseGraphBuilder(em.BytesForFlags).
+		SetDir(dir).
+		SetWithTurnCosts(em.NeedsTurnCostsSupport()).
+		Build()
+	graph.Create(1000)
+
+	reader := osm.NewOSMReader(graph, osmParsers, routing.NewOSMReaderConfig())
+	if err := reader.ReadGraph(g.osmFile); err != nil {
+		return err
+	}
+
+	props := storage.NewStorableProperties(dir)
+	routingutil.PutEncodingManagerIntoProperties(em, props)
+
+	locIndex := index.NewLocationIndexTree(graph, dir)
+	locIndex.PrepareIndex()
+
+	if g.storeOnFlush {
+		graph.Flush()
+		locIndex.Flush()
+		props.Flush()
+	}
+
+	g.graph = graph
+	g.encodingManager = em
+	g.locationIndex = locIndex
+	g.buildRouter()
 
 	g.fullyLoaded = true
+	log.Printf("Import complete. nodes: %d, edges: %d", graph.GetNodes(), graph.GetEdges())
 	return nil
+}
+
+func (g *GraphHopper) buildRouter() {
+	wf := weighting.NewDefaultWeightingFactory(g.graph, g.encodingManager)
+	g.router = routing.NewRouter(g.graph, g.locationIndex, g.routerConfig, g.profilesByName, wf, g.encodingManager)
+}
+
+func (g *GraphHopper) buildEncodingManager() *routingutil.EncodingManager {
+	return routingutil.Start().
+		Add(ev.VehicleAccessCreate("car")).
+		Add(ev.VehicleSpeedCreate("car", 7, 2, true)).
+		AddTurnCostEncodedValue(ev.TurnCostCreate("car", 1)).
+		Add(ev.RoundaboutCreate()).
+		Add(ev.RoadClassCreate()).
+		Add(ev.RoadClassLinkCreate()).
+		Add(ev.RoadEnvironmentCreate()).
+		Add(ev.MaxSpeedCreate()).
+		Add(ev.RoadAccessCreate()).
+		Add(ev.FerrySpeedCreate()).
+		Add(ev.OSMWayIDCreate()).
+		Build()
+}
+
+func (g *GraphHopper) buildOSMParsers(em *routingutil.EncodingManager) *routing.OSMParsers {
+	p := routing.NewOSMParsers()
+	p.AddWayTagParser(parsers.NewOSMRoundaboutParser(em.GetBooleanEncodedValue(ev.RoundaboutKey)))
+	p.AddWayTagParser(parsers.NewOSMRoadClassParser(em.GetEncodedValue(ev.RoadClassKey).(*ev.EnumEncodedValue[ev.RoadClass])))
+	p.AddWayTagParser(parsers.NewOSMRoadClassLinkParser(em.GetBooleanEncodedValue(ev.RoadClassLinkKey)))
+	p.AddWayTagParser(parsers.NewOSMRoadEnvironmentParser(em.GetEncodedValue(ev.RoadEnvironmentKey).(*ev.EnumEncodedValue[ev.RoadEnvironment])))
+	p.AddWayTagParser(parsers.NewOSMMaxSpeedParser(em.GetDecimalEncodedValue(ev.MaxSpeedKey)))
+	p.AddWayTagParser(parsers.NewOSMRoadAccessParser(
+		em.GetEncodedValue(ev.RoadAccessKey).(*ev.EnumEncodedValue[ev.RoadAccess]),
+		parsers.ToOSMRestrictions(routingutil.TransportationModeCar),
+	))
+	p.AddWayTagParser(parsers.NewOSMWayIDParser(em.GetIntEncodedValue(ev.OSMWayIDKey)))
+	p.AddWayTagParser(parsers.NewFerrySpeedCalculator(em.GetDecimalEncodedValue(ev.FerrySpeedKey)))
+	p.AddWayTagParser(parsers.NewCarAccessParser(em, true, true))
+	p.AddWayTagParser(parsers.NewCarAverageSpeedParser(em))
+	return p
 }
 
 func (g *GraphHopper) Route(request webapi.GHRequest) webapi.GHResponse {
