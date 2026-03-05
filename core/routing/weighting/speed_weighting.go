@@ -11,20 +11,27 @@ import (
 var _ Weighting = (*SpeedWeighting)(nil)
 
 // SpeedWeighting calculates edge weights based on distance / speed.
+// When an accessEnc is provided, edges where access is false are blocked (infinite weight).
 type SpeedWeighting struct {
 	speedEnc         ev.DecimalEncodedValue
+	accessEnc        ev.BooleanEncodedValue
 	turnCostProvider TurnCostProvider
 }
 
 func NewSpeedWeighting(speedEnc ev.DecimalEncodedValue) *SpeedWeighting {
-	return NewSpeedWeightingWithProvider(speedEnc, NoTurnCostProvider)
+	return &SpeedWeighting{speedEnc: speedEnc, turnCostProvider: NoTurnCostProvider}
+}
+
+func NewSpeedWeightingWithAccess(speedEnc ev.DecimalEncodedValue, accessEnc ev.BooleanEncodedValue) *SpeedWeighting {
+	return &SpeedWeighting{speedEnc: speedEnc, accessEnc: accessEnc, turnCostProvider: NoTurnCostProvider}
 }
 
 func NewSpeedWeightingWithProvider(speedEnc ev.DecimalEncodedValue, tcp TurnCostProvider) *SpeedWeighting {
-	return &SpeedWeighting{
-		speedEnc:         speedEnc,
-		turnCostProvider: tcp,
-	}
+	return &SpeedWeighting{speedEnc: speedEnc, turnCostProvider: tcp}
+}
+
+func NewSpeedWeightingFull(speedEnc ev.DecimalEncodedValue, accessEnc ev.BooleanEncodedValue, tcp TurnCostProvider) *SpeedWeighting {
+	return &SpeedWeighting{speedEnc: speedEnc, accessEnc: accessEnc, turnCostProvider: tcp}
 }
 
 func NewSpeedWeightingWithTurnCosts(
@@ -69,6 +76,15 @@ func (w *SpeedWeighting) CalcMinWeightPerDistance() float64 {
 }
 
 func (w *SpeedWeighting) CalcEdgeWeight(edgeState util.EdgeIteratorState, reverse bool) float64 {
+	if w.accessEnc != nil {
+		accessible := edgeState.GetBool(w.accessEnc)
+		if reverse {
+			accessible = edgeState.GetReverseBool(w.accessEnc)
+		}
+		if !accessible {
+			return math.Inf(1)
+		}
+	}
 	speed := edgeState.GetDecimal(w.speedEnc)
 	if reverse {
 		speed = edgeState.GetReverseDecimal(w.speedEnc)

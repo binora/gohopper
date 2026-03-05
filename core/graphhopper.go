@@ -61,6 +61,13 @@ func (g *GraphHopper) SetStoreOnFlush(store bool) *GraphHopper {
 	return g
 }
 
+func (g *GraphHopper) SetProfiles(profiles ...config.Profile) *GraphHopper {
+	for _, p := range profiles {
+		g.profilesByName[p.Name] = p
+	}
+	return g
+}
+
 func (g *GraphHopper) Init(cfg GraphHopperConfig) *GraphHopper {
 	g.ghLocation = cfg.GetString("graph.location", "graph-cache")
 	if f := cfg.GetString("datareader.file", ""); f != "" {

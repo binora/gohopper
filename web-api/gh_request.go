@@ -53,6 +53,15 @@ func NewGHRequest() GHRequest {
 	}
 }
 
+func NewGHRequestLatLon(lat1, lon1, lat2, lon2 float64) GHRequest {
+	req := NewGHRequest()
+	req.Points = []util.GHPoint{
+		{Lat: lat1, Lon: lon1},
+		{Lat: lat2, Lon: lon2},
+	}
+	return req
+}
+
 func IsAzimuthValue(v float64) bool {
 	if math.IsNaN(v) {
 		return true

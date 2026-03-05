@@ -339,9 +339,13 @@ func (h *pass2Handler) splitLoopSegments(segment []SegmentNode, way *reader.Read
 	if len(segment) == 2 && isLoop {
 		log.Printf("Loop in OSM way: %d, will be ignored, duplicate node: %d", way.GetID(), segment[0].OSMNodeID)
 	} else if isLoop {
-		// Split loop into two segments
+		// Split loop into two segments at the midpoint.
 		h.splitSegmentAtSplitNodes(segment[:len(segment)-1], way)
-		h.splitSegmentAtSplitNodes(segment[len(segment)-2:], way)
+		// The first half may have promoted the shared midpoint from pillar to tower.
+		// Re-read the ID from nodeData so the second half sees the updated tower ID.
+		mid := len(segment) - 2
+		segment[mid].ID = h.parser.nodeData.GetID(segment[mid].OSMNodeID)
+		h.splitSegmentAtSplitNodes(segment[mid:], way)
 	} else {
 		h.splitSegmentAtSplitNodes(segment, way)
 	}

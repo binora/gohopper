@@ -85,7 +85,6 @@ func (r *Router) Route(request webapi.GHRequest) webapi.GHResponse {
 			})
 			return response
 		}
-		snap.CalcSnappedPoint(util.DistPlane)
 		snaps[i] = snap
 	}
 

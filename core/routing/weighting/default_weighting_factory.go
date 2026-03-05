@@ -48,6 +48,7 @@ func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints 
 	}
 
 	speedEnc := f.encodingManager.GetDecimalEncodedValue(ev.VehicleSpeedKey(profile.Name))
+	accessEnc := f.encodingManager.GetBooleanEncodedValue(ev.VehicleAccessKey(profile.Name))
 
 	if profile.TurnCosts != nil && !disableTurnCosts {
 		turnRestrictionEnc := f.encodingManager.GetTurnBooleanEncodedValue(ev.TurnRestrictionKey(profile.Name))
@@ -66,10 +67,10 @@ func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints 
 			f.graph.GetNodeAccess(),
 			uTurnCosts,
 		)
-		return NewSpeedWeightingWithProvider(speedEnc, tcp)
+		return NewSpeedWeightingFull(speedEnc, accessEnc, tcp)
 	}
 
-	return NewSpeedWeighting(speedEnc)
+	return NewSpeedWeightingWithAccess(speedEnc, accessEnc)
 }
 
 // toInt converts a value to int, handling common types from JSON/YAML deserialization.
