@@ -20,7 +20,7 @@ GO_PORT := 8080
 
 CONFORMANCE_CASES ?= testdata/conformance/route_cases.json
 
-.PHONY: test conformance ci
+.PHONY: test conformance parity ci
 
 test:
 	mkdir -p "$(GOCACHE)"
@@ -43,5 +43,9 @@ conformance:
 	GO_PORT="$(GO_PORT)" \
 	CONFORMANCE_CASES="$(CONFORMANCE_CASES)" \
 	./scripts/conformance.sh
+
+parity:
+	cd tests/parity && docker compose up --build --abort-on-container-exit --exit-code-from test-runner
+	cd tests/parity && docker compose down
 
 ci: test conformance

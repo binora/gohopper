@@ -26,7 +26,7 @@ const (
 	// Route A: short urban (42.5063, 1.5218) -> (42.5103, 1.5385)
 	routeADist   = 1910.1
 	routeATime   = int64(125747)
-	routeAPoints = 84
+	routeAPoints = 62
 
 	// Route A visited nodes per algorithm
 	routeAVisitedDijkstra   = 303
@@ -37,12 +37,12 @@ const (
 	// Route B: cross-town (42.5063, 1.5218) -> (42.5354, 1.5806)
 	routeBDist   = 6756.4
 	routeBTime   = int64(396148)
-	routeBPoints = 232
+	routeBPoints = 190
 
 	// Via route A->B->A
 	viaDist   = 3479.3
 	viaTime   = int64(249697)
-	viaPoints = 150
+	viaPoints = 117
 )
 
 var (

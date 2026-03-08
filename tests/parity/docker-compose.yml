@@ -1,0 +1,35 @@
+services:
+  java-gh:
+    build:
+      context: ../..
+      dockerfile: tests/parity/Dockerfile
+    command: java -jar /app/graphhopper.jar server /app/config.yml
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8989/health"]
+      interval: 2s
+      retries: 30
+      start_period: 30s
+
+  go-gh:
+    build:
+      context: ../..
+      dockerfile: tests/parity/Dockerfile
+    command: /app/gohopper server /app/config.yml
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8989/health"]
+      interval: 2s
+      retries: 30
+      start_period: 10s
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      java-gh:
+        condition: service_healthy
+      go-gh:
+        condition: service_healthy
+    environment:
+      JAVA_URL: http://java-gh:8989
+      GO_URL: http://go-gh:8989

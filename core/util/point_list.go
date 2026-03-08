@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -257,6 +258,17 @@ func (pl *PointList) ToGHPoints() []GHPoint {
 		pts[i] = GHPoint{Lat: pl.lats[i], Lon: pl.lons[i]}
 	}
 	return pts
+}
+
+// Parse2DJSON parses a JSON array of [lon,lat] pairs and adds them to the PointList.
+func (pl *PointList) Parse2DJSON(s string) {
+	var coords [][]float64
+	if err := json.Unmarshal([]byte(s), &coords); err != nil {
+		panic(fmt.Sprintf("cannot parse 2D JSON: %v", err))
+	}
+	for _, c := range coords {
+		pl.Add(c[1], c[0]) // JSON is [lon,lat], PointList takes (lat,lon)
+	}
 }
 
 // CreatePointList is a convenience to create a 2D PointList from lat,lon pairs.

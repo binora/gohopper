@@ -143,6 +143,8 @@ func (r *Router) buildResponsePath(request webapi.GHRequest, paths []*Path, snap
 	var totalWeight float64
 
 	allPoints := util.NewPointList(0, false)
+	// Track waypoint indices for simplification partitioning.
+	waypointIndices := []int{0}
 	for i, p := range paths {
 		totalDistance += p.Distance
 		totalTime += p.Time
@@ -157,6 +159,29 @@ func (r *Router) buildResponsePath(request webapi.GHRequest, paths []*Path, snap
 				pt := legPoints.Get(j)
 				allPoints.Add(pt.Lat, pt.Lon)
 			}
+			waypointIndices = append(waypointIndices, allPoints.Size()-1)
+		}
+	}
+
+	// Apply RDP simplification if configured.
+	if r.routerConfig.SimplifyResponse && request.Options.CalcPoints && allPoints.Size() > 2 {
+		wayPointMaxDist := request.Hints.GetFloat64("way_point_max_distance", 0.5)
+		rdp := util.NewRamerDouglasPeucker()
+		rdp.SetMaxDistance(wayPointMaxDist)
+
+		// Build waypoint partition from indices.
+		wpIntervals := make([]util.Interval, len(waypointIndices)-1)
+		for i := range wpIntervals {
+			wpIntervals[i] = util.Interval{Start: waypointIndices[i], End: waypointIndices[i+1]}
+		}
+		partition := &waypointPartition{intervals: wpIntervals}
+		util.SimplifyPath(allPoints, []util.Partition{partition}, rdp)
+
+		// Rebuild waypoint indices from simplified partition.
+		waypointIndices = make([]int, 0, len(wpIntervals)+1)
+		waypointIndices = append(waypointIndices, partition.intervals[0].Start)
+		for _, iv := range partition.intervals {
+			waypointIndices = append(waypointIndices, iv.End)
 		}
 	}
 
@@ -174,11 +199,7 @@ func (r *Router) buildResponsePath(request webapi.GHRequest, paths []*Path, snap
 	}
 
 	if request.Options.CalcPoints && allPoints.Size() > 0 {
-		ghPoints := make([]util.GHPoint, allPoints.Size())
-		for i := 0; i < allPoints.Size(); i++ {
-			pt := allPoints.Get(i)
-			ghPoints[i] = pt.GHPoint
-		}
+		ghPoints := allPoints.ToGHPoints()
 
 		if request.Options.PointsEncoded {
 			rp.Points = util.EncodePolylineFromPoints(ghPoints, request.Options.PointsEncodedMultiplier)
@@ -197,6 +218,24 @@ func (r *Router) buildResponsePath(request webapi.GHRequest, paths []*Path, snap
 	}
 
 	return rp
+}
+
+// waypointPartition implements util.Partition for waypoint interval tracking.
+type waypointPartition struct {
+	intervals []util.Interval
+}
+
+func (w *waypointPartition) Size() int {
+	return len(w.intervals)
+}
+
+func (w *waypointPartition) GetIntervalLength(index int) int {
+	return w.intervals[index].End - w.intervals[index].Start
+}
+
+func (w *waypointPartition) SetInterval(index, start, end int) {
+	w.intervals[index].Start = start
+	w.intervals[index].End = end
 }
 
 func buildSimpleInstructions(distance float64, timeMs int64, numPoints int) []webapi.Instruction {
