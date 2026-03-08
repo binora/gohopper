@@ -1,6 +1,9 @@
 package ev
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 var _ fmt.Stringer = Hazmat(0)
 
@@ -21,6 +24,18 @@ func (h Hazmat) String() string {
 		return hazmatNames[h]
 	}
 	return "yes"
+}
+
+func HazmatFind(name string) Hazmat {
+	if name == "" {
+		return HazmatYes
+	}
+	for i, n := range hazmatNames {
+		if strings.EqualFold(n, name) {
+			return Hazmat(i)
+		}
+	}
+	return HazmatYes
 }
 
 func HazmatCreate() *EnumEncodedValue[Hazmat] {

@@ -49,8 +49,8 @@ func TestDefaultWeightingFactory_SpeedWeighting(t *testing.T) {
 	if w == nil {
 		t.Fatal("expected non-nil weighting")
 	}
-	if w.GetName() != "speed" {
-		t.Errorf("expected name 'speed', got %q", w.GetName())
+	if w.GetName() != "custom" {
+		t.Errorf("expected name 'custom', got %q", w.GetName())
 	}
 	if w.HasTurnCosts() {
 		t.Error("expected no turn costs")
@@ -78,8 +78,8 @@ func TestDefaultWeightingFactory_WithTurnCosts(t *testing.T) {
 	if !w.HasTurnCosts() {
 		t.Error("expected turn costs to be enabled")
 	}
-	if w.GetName() != "speed" {
-		t.Errorf("expected name 'speed', got %q", w.GetName())
+	if w.GetName() != "custom" {
+		t.Errorf("expected name 'custom', got %q", w.GetName())
 	}
 }
 

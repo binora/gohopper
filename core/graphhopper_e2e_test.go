@@ -18,32 +18,30 @@ import (
 const andorraOSM = "testdata/andorra.osm.pbf"
 
 // Baseline values: node/edge counts and distances match Java GH (minNetworkSize=0, car profile).
-// Time/weight/points use Go values (Go uses SpeedWeighting, Java uses CustomWeighting with distance_influence).
+// Times use CustomWeighting formula: seconds = distance / speed * 3.6 (SPEED_CONV).
 const (
 	andorraNodes = 2385
 	andorraEdges = 2820
 
 	// Route A: short urban (42.5063, 1.5218) -> (42.5103, 1.5385)
-	// Java distance: 1909.8m (matches within 1m)
 	routeADist   = 1910.1
-	routeATime   = int64(34917)
+	routeATime   = int64(125747)
 	routeAPoints = 84
 
 	// Route A visited nodes per algorithm
 	routeAVisitedDijkstra   = 303
-	routeAVisitedAStar      = 270
+	routeAVisitedAStar      = 218
 	routeAVisitedDijkstraBi = 196
-	routeAVisitedAStarBi    = 178
+	routeAVisitedAStarBi    = 124
 
 	// Route B: cross-town (42.5063, 1.5218) -> (42.5354, 1.5806)
-	// Java distance: 6755.8m (matches within 1m)
 	routeBDist   = 6756.4
-	routeBTime   = int64(110010)
+	routeBTime   = int64(396148)
 	routeBPoints = 232
 
 	// Via route A->B->A
 	viaDist   = 3479.3
-	viaTime   = int64(69337)
+	viaTime   = int64(249697)
 	viaPoints = 150
 )
 

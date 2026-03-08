@@ -178,12 +178,12 @@ func (e *EdgeIteratorStateImpl) SetDecimalBothDir(property ev.DecimalEncodedValu
 }
 
 // enumEncodedValue is the interface expected by the enum accessors below.
-// It unifies the repeated inline interface declarations for enum properties.
+// Uses the Any-suffixed methods so that generic EnumEncodedValue[E] can satisfy it.
 type enumEncodedValue interface {
 	GetName() string
 	IsStoreTwoDirections() bool
-	GetEnum(reverse bool, edgeID int, eia ev.EdgeIntAccess) any
-	SetEnum(reverse bool, edgeID int, eia ev.EdgeIntAccess, value any)
+	GetEnumAny(reverse bool, edgeID int, eia ev.EdgeIntAccess) any
+	SetEnumAny(reverse bool, edgeID int, eia ev.EdgeIntAccess, value any)
 }
 
 func asEnumEV(property any) enumEncodedValue {
@@ -195,20 +195,20 @@ func asEnumEV(property any) enumEncodedValue {
 }
 
 func (e *EdgeIteratorStateImpl) GetEnum(property any) any {
-	return asEnumEV(property).GetEnum(e.Reverse, e.EdgeID, e.store)
+	return asEnumEV(property).GetEnumAny(e.Reverse, e.EdgeID, e.store)
 }
 
 func (e *EdgeIteratorStateImpl) SetEnum(property any, value any) util.EdgeIteratorState {
-	asEnumEV(property).SetEnum(e.Reverse, e.EdgeID, e.store, value)
+	asEnumEV(property).SetEnumAny(e.Reverse, e.EdgeID, e.store, value)
 	return e
 }
 
 func (e *EdgeIteratorStateImpl) GetReverseEnum(property any) any {
-	return asEnumEV(property).GetEnum(!e.Reverse, e.EdgeID, e.store)
+	return asEnumEV(property).GetEnumAny(!e.Reverse, e.EdgeID, e.store)
 }
 
 func (e *EdgeIteratorStateImpl) SetReverseEnum(property any, value any) util.EdgeIteratorState {
-	asEnumEV(property).SetEnum(!e.Reverse, e.EdgeID, e.store, value)
+	asEnumEV(property).SetEnumAny(!e.Reverse, e.EdgeID, e.store, value)
 	return e
 }
 
@@ -217,8 +217,8 @@ func (e *EdgeIteratorStateImpl) SetEnumBothDir(property any, fwd, bwd any) util.
 	if !p.IsStoreTwoDirections() {
 		panic(fmt.Sprintf("EncodedValue %s supports only one direction", p.GetName()))
 	}
-	p.SetEnum(e.Reverse, e.EdgeID, e.store, fwd)
-	p.SetEnum(!e.Reverse, e.EdgeID, e.store, bwd)
+	p.SetEnumAny(e.Reverse, e.EdgeID, e.store, fwd)
+	p.SetEnumAny(!e.Reverse, e.EdgeID, e.store, bwd)
 	return e
 }
 

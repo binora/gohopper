@@ -7,7 +7,9 @@ import (
 	"gohopper/core/config"
 	"gohopper/core/routing/ev"
 	routingutil "gohopper/core/routing/util"
+	"gohopper/core/routing/weighting/custom"
 	"gohopper/core/storage"
+	webapi "gohopper/web-api"
 )
 
 // Compile-time check that DefaultWeightingFactory implements WeightingFactory.
@@ -34,7 +36,6 @@ func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints 
 
 	switch weightingStr {
 	case "custom":
-		// For now, custom weighting maps to SpeedWeighting.
 	case "shortest":
 		panic("Instead of weighting=shortest use weighting=custom with a high distance_influence")
 	case "fastest":
@@ -47,10 +48,15 @@ func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints 
 		panic(fmt.Sprintf("Weighting '%s' not supported", weightingStr))
 	}
 
-	speedEnc := f.encodingManager.GetDecimalEncodedValue(ev.VehicleSpeedKey(profile.Name))
-	accessEnc := f.encodingManager.GetBooleanEncodedValue(ev.VehicleAccessKey(profile.Name))
+	vehicleSpeedKey := ev.VehicleSpeedKey(profile.Name)
 
+	// Build CustomModel: use profile's model or create default
+	cm := buildCustomModel(profile, vehicleSpeedKey)
+
+	hasTurnCosts := false
+	var tcp custom.TurnCostProvider = NoTurnCostProvider
 	if profile.TurnCosts != nil && !disableTurnCosts {
+		hasTurnCosts = true
 		turnRestrictionEnc := f.encodingManager.GetTurnBooleanEncodedValue(ev.TurnRestrictionKey(profile.Name))
 
 		uTurnCosts := -1 // infinite by default
@@ -61,16 +67,27 @@ func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints 
 			uTurnCosts = toInt(v)
 		}
 
-		tcp := NewDefaultTurnCostProvider(
+		tcp = NewDefaultTurnCostProvider(
 			turnRestrictionEnc,
 			f.graph.TurnCostStorage,
 			f.graph.GetNodeAccess(),
 			uTurnCosts,
 		)
-		return NewSpeedWeightingFull(speedEnc, accessEnc, tcp)
 	}
 
-	return NewSpeedWeightingWithAccess(speedEnc, accessEnc)
+	return custom.CreateWeighting(f.encodingManager, tcp, hasTurnCosts, cm)
+}
+
+func buildCustomModel(profile config.Profile, vehicleSpeedKey string) *webapi.CustomModel {
+	// TODO: parse profile.CustomModel map[string]any into *webapi.CustomModel
+	// Default: block inaccessible edges and limit speed to vehicle speed.
+	// In Go, speed parsers set speed for both directions, so we must
+	// explicitly check access (Java parsers set speed=0 for inaccessible dirs).
+	accessKey := ev.VehicleAccessKey(profile.Name)
+	cm := webapi.NewCustomModel()
+	cm.AddToSpeed(webapi.If("!"+accessKey, webapi.OpMultiply, "0"))
+	cm.AddToSpeed(webapi.If("true", webapi.OpLimit, vehicleSpeedKey))
+	return cm
 }
 
 // toInt converts a value to int, handling common types from JSON/YAML deserialization.

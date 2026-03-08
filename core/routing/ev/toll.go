@@ -1,6 +1,9 @@
 package ev
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 var _ fmt.Stringer = Toll(0)
 
@@ -23,6 +26,18 @@ func (t Toll) String() string {
 		return tollNames[t]
 	}
 	return "missing"
+}
+
+func TollFind(name string) Toll {
+	if name == "" {
+		return TollMissing
+	}
+	for i, n := range tollNames {
+		if strings.EqualFold(n, name) {
+			return Toll(i)
+		}
+	}
+	return TollMissing
 }
 
 func TollCreate() *EnumEncodedValue[Toll] {

@@ -36,6 +36,16 @@ func (e *EnumEncodedValue[E]) getIntImpl() *IntEncodedValueImpl {
 	return e.IntEncodedValueImpl
 }
 
+// SetEnumAny / GetEnumAny are type-erased wrappers so that the concrete generic
+// type satisfies the enumEncodedValue interface used by EdgeIteratorStateImpl.
+func (e *EnumEncodedValue[E]) SetEnumAny(reverse bool, edgeID int, eia EdgeIntAccess, value any) {
+	e.SetEnum(reverse, edgeID, eia, value.(E))
+}
+
+func (e *EnumEncodedValue[E]) GetEnumAny(reverse bool, edgeID int, eia EdgeIntAccess) any {
+	return e.GetEnum(reverse, edgeID, eia)
+}
+
 // enumSequence returns a slice [0, 1, 2, ..., n-1] typed as E.
 func enumSequence[E ~int](n int) []E {
 	s := make([]E, n)
