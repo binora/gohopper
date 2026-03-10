@@ -116,6 +116,22 @@ func (bg *BaseGraph) Freeze() {
 	bg.Store.SetFrozen(true)
 }
 
+// SortEdges reorders all edges using the given mapping and updates turn cost edge references.
+func (bg *BaseGraph) SortEdges(getNewEdge func(int) int) {
+	bg.Store.SortEdges(getNewEdge)
+	if bg.SupportsTurnCosts() {
+		bg.TurnCostStorage.SortEdges(getNewEdge)
+	}
+}
+
+// RelabelNodes reorders all nodes using the given mapping and rebuilds turn cost linked lists.
+func (bg *BaseGraph) RelabelNodes(getNewNode func(int) int) {
+	bg.Store.RelabelNodes(getNewNode)
+	if bg.SupportsTurnCosts() {
+		bg.TurnCostStorage.SortNodes(bg.GetNodes(), bg.nodeAccess)
+	}
+}
+
 func (bg *BaseGraph) GetTurnCostStorage() *TurnCostStorage { return bg.TurnCostStorage }
 func (bg *BaseGraph) GetMaxGeoRef() int64                  { return bg.maxGeoRef }
 func (bg *BaseGraph) GetDirectory() Directory              { return bg.dir }

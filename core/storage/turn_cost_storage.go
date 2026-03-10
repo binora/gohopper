@@ -167,6 +167,61 @@ func (tc *TurnCostStorage) SetBool(na NodeAccess, bev ev.BooleanEncodedValue, fr
 	bev.SetBool(false, idx, &tcEdgeIntAccess{tc}, value)
 }
 
+// SortEdges updates from/to edge references in all turn cost entries using the given mapping.
+func (tc *TurnCostStorage) SortEdges(getNewEdge func(int) int) {
+	for i := range tc.count {
+		ptr := tc.toPointer(i)
+		tc.da.SetInt(ptr+tcFrom, int32(getNewEdge(int(tc.da.GetInt(ptr+tcFrom)))))
+		tc.da.SetInt(ptr+tcTo, int32(getNewEdge(int(tc.da.GetInt(ptr+tcTo)))))
+	}
+}
+
+// tcEntry holds a snapshot of one turn cost entry for rebuilding the linked list.
+type tcEntry struct {
+	from, to, flags, next int32
+}
+
+// SortNodes rebuilds the turn cost linked list to match new node ordering.
+// It snapshots all entries, then writes them back in node order.
+func (tc *TurnCostStorage) SortNodes(nodeCount int, na NodeAccess) {
+	entries := make([]tcEntry, tc.count)
+	for i := range tc.count {
+		ptr := tc.toPointer(i)
+		entries[i] = tcEntry{
+			from:  tc.da.GetInt(ptr + tcFrom),
+			to:    tc.da.GetInt(ptr + tcTo),
+			flags: tc.da.GetInt(ptr + tcFlags),
+			next:  tc.da.GetInt(ptr + tcNext),
+		}
+	}
+
+	countBefore := tc.count
+	tc.count = 0
+	for node := range nodeCount {
+		firstForNode := true
+		idx := na.GetTurnCostIndex(node)
+		for idx != NoTurnEntry {
+			if firstForNode {
+				na.SetTurnCostIndex(node, tc.count)
+			} else {
+				tc.da.SetInt(tc.toPointer(tc.count-1)+tcNext, int32(tc.count))
+			}
+			e := entries[idx]
+			ptr := tc.toPointer(tc.count)
+			tc.da.SetInt(ptr+tcFrom, e.from)
+			tc.da.SetInt(ptr+tcTo, e.to)
+			tc.da.SetInt(ptr+tcFlags, e.flags)
+			tc.da.SetInt(ptr+tcNext, int32(NoTurnEntry))
+			tc.count++
+			firstForNode = false
+			idx = int(e.next)
+		}
+	}
+	if countBefore != tc.count {
+		panic("turn cost count changed unexpectedly")
+	}
+}
+
 func (tc *TurnCostStorage) SetDecimal(na NodeAccess, dev ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int, cost float64) {
 	idx := tc.FindOrCreateEntry(na, fromEdge, viaNode, toEdge)
 	if idx < 0 {

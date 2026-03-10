@@ -35,6 +35,7 @@ type GraphHopper struct {
 	fullyLoaded     bool
 	ignoredHighways []string
 	minNetworkSize  int
+	sortGraph       bool
 	properties      map[string]string
 	initErr         error
 }
@@ -46,6 +47,7 @@ func NewGraphHopper() *GraphHopper {
 		properties:     make(map[string]string),
 		storeOnFlush:   true,
 		minNetworkSize: 200,
+		sortGraph:      true,
 	}
 }
 
@@ -61,6 +63,11 @@ func (g *GraphHopper) SetGraphHopperLocation(path string) *GraphHopper {
 
 func (g *GraphHopper) SetStoreOnFlush(store bool) *GraphHopper {
 	g.storeOnFlush = store
+	return g
+}
+
+func (g *GraphHopper) SetSortGraph(sort bool) *GraphHopper {
+	g.sortGraph = sort
 	return g
 }
 
@@ -81,6 +88,7 @@ func (g *GraphHopper) Init(cfg GraphHopperConfig) *GraphHopper {
 	}
 	g.ignoredHighways = cfg.SplitCSV("import.osm.ignored_highways")
 	g.minNetworkSize = cfg.GetInt("prepare.min_network_size", 200)
+	g.sortGraph = cfg.GetBool("graph.sort", true)
 	g.initErr = validateProfileConfig(cfg)
 	return g
 }
@@ -172,6 +180,10 @@ func (g *GraphHopper) process() error {
 	}
 
 	g.cleanUp(graph, em)
+
+	if g.sortGraph {
+		storage.SortGraphAlongHilbertCurve(graph)
+	}
 
 	props := storage.NewStorableProperties(dir)
 	routingutil.PutEncodingManagerIntoProperties(em, props)

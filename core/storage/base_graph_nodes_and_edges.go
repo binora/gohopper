@@ -395,6 +395,159 @@ func (s *BaseGraphNodesAndEdges) SetInt(edgeID, index int, value int32) {
 	s.setFlagInt(s.ToEdgePointer(edgeID), index*4, value)
 }
 
+// edgeData holds all fields of an edge for in-place permutation.
+type edgeData struct {
+	nodeA, nodeB int
+	linkA, linkB int
+	dist         int32
+	kv           int
+	flags        *IntsRef
+	geo          int64
+}
+
+func (s *BaseGraphNodesAndEdges) loadEdge(ptr int64) edgeData {
+	flags := s.CreateEdgeFlags()
+	s.ReadFlags(ptr, flags)
+	return edgeData{
+		nodeA: s.GetNodeA(ptr),
+		nodeB: s.GetNodeB(ptr),
+		linkA: s.GetLinkA(ptr),
+		linkB: s.GetLinkB(ptr),
+		dist:  s.edges.GetInt(ptr + int64(s.eDist)),
+		kv:    s.GetKeyValuesRef(ptr),
+		flags: flags,
+		geo:   s.GetGeoRef(ptr),
+	}
+}
+
+func (s *BaseGraphNodesAndEdges) storeEdge(ptr int64, e edgeData, getNewEdge func(int) int) {
+	s.SetNodeA(ptr, e.nodeA)
+	s.SetNodeB(ptr, e.nodeB)
+	s.SetLinkA(ptr, remapEdge(e.linkA, getNewEdge))
+	s.SetLinkB(ptr, remapEdge(e.linkB, getNewEdge))
+	s.edges.SetInt(ptr+int64(s.eDist), e.dist)
+	s.SetKeyValuesRef(ptr, e.kv)
+	s.WriteFlags(ptr, e.flags)
+	s.SetGeoRef(ptr, e.geo)
+}
+
+// remapEdge translates an edge ID through the permutation, preserving noEdge sentinels.
+func remapEdge(edge int, getNewEdge func(int) int) int {
+	if edge == noEdge {
+		return noEdge
+	}
+	return getNewEdge(edge)
+}
+
+// SortEdges reorders edges in-place using a cycle-following permutation algorithm.
+// getNewEdge maps old edge ID to new edge ID.
+func (s *BaseGraphNodesAndEdges) SortEdges(getNewEdge func(int) int) {
+	visited := make([]bool, s.edgeCount)
+	for edge := range s.edgeCount {
+		if visited[edge] {
+			continue
+		}
+		curr := edge
+		carry := s.loadEdge(s.ToEdgePointer(curr))
+
+		for {
+			visited[curr] = true
+			dest := getNewEdge(curr)
+			destPtr := s.ToEdgePointer(dest)
+
+			next := s.loadEdge(destPtr)
+			s.storeEdge(destPtr, carry, getNewEdge)
+			carry = next
+
+			curr = dest
+			if curr == edge {
+				break
+			}
+		}
+	}
+
+	// Update edge references in nodes.
+	for node := range s.nodeCount {
+		ptr := s.ToNodePointer(node)
+		edgeRef := s.GetEdgeRef(ptr)
+		if edgeRef != noEdge {
+			s.SetEdgeRef(ptr, getNewEdge(edgeRef))
+		}
+	}
+}
+
+// nodeData holds all fields of a node for in-place permutation.
+type nodeData struct {
+	edgeRef int
+	lat     float64
+	lon     float64
+	ele     float64
+	tcRef   int
+}
+
+func (s *BaseGraphNodesAndEdges) loadNode(ptr int64) nodeData {
+	nd := nodeData{
+		edgeRef: s.GetEdgeRef(ptr),
+		lat:     s.GetLat(ptr),
+		lon:     s.GetLon(ptr),
+	}
+	if s.withElevation {
+		nd.ele = s.GetEle(ptr)
+	}
+	if s.withTurnCosts {
+		nd.tcRef = s.GetTurnCostRef(ptr)
+	}
+	return nd
+}
+
+func (s *BaseGraphNodesAndEdges) storeNode(ptr int64, nd nodeData) {
+	s.SetEdgeRef(ptr, nd.edgeRef)
+	s.SetLat(ptr, nd.lat)
+	s.SetLon(ptr, nd.lon)
+	if s.withElevation {
+		s.SetEle(ptr, nd.ele)
+	}
+	if s.withTurnCosts {
+		s.SetTurnCostRef(ptr, nd.tcRef)
+	}
+}
+
+// RelabelNodes reorders nodes in-place using a cycle-following permutation algorithm.
+// getNewNode maps old node ID to new node ID.
+func (s *BaseGraphNodesAndEdges) RelabelNodes(getNewNode func(int) int) {
+	// Update all node references in edges.
+	for edge := range s.edgeCount {
+		ptr := s.ToEdgePointer(edge)
+		s.SetNodeA(ptr, getNewNode(s.GetNodeA(ptr)))
+		s.SetNodeB(ptr, getNewNode(s.GetNodeB(ptr)))
+	}
+
+	// Cycle-following permutation on node data.
+	visited := make([]bool, s.nodeCount)
+	for node := range s.nodeCount {
+		if visited[node] {
+			continue
+		}
+		curr := node
+		carry := s.loadNode(s.ToNodePointer(curr))
+
+		for {
+			visited[curr] = true
+			dest := getNewNode(curr)
+			destPtr := s.ToNodePointer(dest)
+
+			next := s.loadNode(destPtr)
+			s.storeNode(destPtr, carry)
+			carry = next
+
+			curr = dest
+			if curr == node {
+				break
+			}
+		}
+	}
+}
+
 func distToInt(distance float64) int {
 	if distance < 0 {
 		panic(fmt.Sprintf("distance cannot be negative: %f", distance))
