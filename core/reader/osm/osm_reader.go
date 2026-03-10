@@ -26,23 +26,28 @@ var wayNamePattern = regexp.MustCompile(`; *`)
 
 // OSMReader reads an OSM file (PBF or XML) and builds a BaseGraph.
 type OSMReader struct {
-	graph      *storage.BaseGraph
-	osmParsers *routing.OSMParsers
-	config     routing.OSMReaderConfig
-	distCalc   util.DistanceCalc
-	nodeAccess storage.NodeAccess
+	graph        *storage.BaseGraph
+	osmParsers   *routing.OSMParsers
+	config       routing.OSMReaderConfig
+	distCalc     util.DistanceCalc
+	nodeAccess   storage.NodeAccess
+	simplifyAlgo *util.RamerDouglasPeucker
 
 	zeroCounter int
 }
 
 // NewOSMReader creates a new OSMReader that will populate the given graph.
 func NewOSMReader(graph *storage.BaseGraph, osmParsers *routing.OSMParsers, config routing.OSMReaderConfig) *OSMReader {
+	simplifyAlgo := util.NewRamerDouglasPeucker().
+		SetMaxDistance(config.MaxWayPointDistance).
+		SetElevationMaxDistance(config.ElevationMaxWayPointDistance)
 	return &OSMReader{
-		graph:      graph,
-		osmParsers: osmParsers,
-		config:     config,
-		distCalc:   util.DistEarth,
-		nodeAccess: graph.GetNodeAccess(),
+		graph:        graph,
+		osmParsers:   osmParsers,
+		config:       config,
+		distCalc:     util.DistEarth,
+		nodeAccess:   graph.GetNodeAccess(),
+		simplifyAlgo: simplifyAlgo,
 	}
 }
 
@@ -202,6 +207,11 @@ func (r *OSMReader) calcWayDistance(way *reader.ReaderWay, coordSupplier Coordin
 func (r *OSMReader) addEdge(fromIndex, toIndex int, pointList *util.PointList, way *reader.ReaderWay, nodeTags []map[string]any) {
 	if fromIndex < 0 || toIndex < 0 {
 		panic(fmt.Sprintf("to or from index is invalid for this edge %d->%d", fromIndex, toIndex))
+	}
+
+	// Simplify pillar nodes before computing distance (matches Java OSMReader).
+	if r.config.MaxWayPointDistance > 0 && pointList.Size() > 2 {
+		r.simplifyAlgo.Simplify(pointList)
 	}
 
 	distance := r.distCalc.CalcPointListDistance(pointList)

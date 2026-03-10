@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gohopper/core/config"
+	"gohopper/core/routing/ev"
 	"gohopper/core/routing/querygraph"
 	routingutil "gohopper/core/routing/util"
 	"gohopper/core/routing/weighting"
@@ -75,9 +76,12 @@ func (r *Router) Route(request webapi.GHRequest) webapi.GHResponse {
 		tMode = routingutil.EdgeBased
 	}
 
+	// Build snap filter: reject subnetwork edges and edges inaccessible in both directions.
+	edgeFilter := r.buildEdgeFilter(profile, w)
+
 	snaps := make([]*index.Snap, len(request.Points))
 	for i, pt := range request.Points {
-		snap := r.locationIdx.FindClosest(pt.Lat, pt.Lon, routingutil.AllEdges)
+		snap := r.locationIdx.FindClosest(pt.Lat, pt.Lon, edgeFilter)
 		if snap == nil || !snap.IsValid() {
 			response.AddError(webapi.PointNotFoundError{
 				Message: fmt.Sprintf("Cannot find point %d: %s", i, pt.String()),
@@ -313,6 +317,16 @@ func (r *Router) checkNoBlockArea(request webapi.GHRequest) error {
 		return fmt.Errorf("the `block_area` parameter is no longer supported, use a custom model with `areas` instead")
 	}
 	return nil
+}
+
+func (r *Router) buildEdgeFilter(profile config.Profile, w weighting.Weighting) routingutil.EdgeFilter {
+	subnetworkKey := ev.SubnetworkKey(profile.Name)
+	if r.encodingManager.HasEncodedValue(subnetworkKey) {
+		subnetworkEnc := r.encodingManager.GetBooleanEncodedValue(subnetworkKey)
+		return routingutil.NewDefaultSnapFilter(w, subnetworkEnc)
+	}
+	// Fallback: accept edges accessible in at least one direction.
+	return NewFiniteWeightFilter(w)
 }
 
 func toCoordinates(points []util.GHPoint) [][]float64 {

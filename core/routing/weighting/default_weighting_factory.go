@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gohopper/core/config"
+	custom_models "gohopper/core/custom_models"
 	"gohopper/core/routing/ev"
 	routingutil "gohopper/core/routing/util"
 	"gohopper/core/routing/weighting/custom"
@@ -51,7 +52,7 @@ func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints 
 	vehicleSpeedKey := ev.VehicleSpeedKey(profile.Name)
 
 	// Build CustomModel: use profile's model or create default
-	cm := buildCustomModel(profile, vehicleSpeedKey)
+	cm := buildCustomModel(profile, vehicleSpeedKey, f.encodingManager)
 
 	hasTurnCosts := false
 	var tcp custom.TurnCostProvider = NoTurnCostProvider
@@ -78,15 +79,33 @@ func (f *DefaultWeightingFactory) CreateWeighting(profile config.Profile, hints 
 	return custom.CreateWeighting(f.encodingManager, tcp, hasTurnCosts, cm)
 }
 
-func buildCustomModel(profile config.Profile, vehicleSpeedKey string) *webapi.CustomModel {
-	// TODO: parse profile.CustomModel map[string]any into *webapi.CustomModel
-	// Default: block inaccessible edges and limit speed to vehicle speed.
-	// In Go, speed parsers set speed for both directions, so we must
-	// explicitly check access (Java parsers set speed=0 for inaccessible dirs).
-	accessKey := ev.VehicleAccessKey(profile.Name)
-	cm := webapi.NewCustomModel()
-	cm.AddToSpeed(webapi.If("!"+accessKey, webapi.OpMultiply, "0"))
-	cm.AddToSpeed(webapi.If("true", webapi.OpLimit, vehicleSpeedKey))
+func buildCustomModel(profile config.Profile, vehicleSpeedKey string, em *routingutil.EncodingManager) *webapi.CustomModel {
+	// Load custom model files (e.g. car.json) and merge them.
+	var cm *webapi.CustomModel
+	if len(profile.CustomModelFiles) > 0 {
+		cm = webapi.NewCustomModel()
+		for _, f := range profile.CustomModelFiles {
+			fileCM, err := custom_models.Load(f)
+			if err != nil {
+				panic(fmt.Sprintf("loading custom model file %q: %v", f, err))
+			}
+			cm = webapi.MergeCustomModels(cm, fileCM)
+		}
+	} else {
+		// Default: match Java's TestProfiles.accessAndSpeed() — block
+		// inaccessible edges via priority and limit speed to vehicle speed.
+		accessKey := ev.VehicleAccessKey(profile.Name)
+		cm = webapi.NewCustomModel()
+		cm.AddToPriority(webapi.If("!"+accessKey, webapi.OpMultiply, "0"))
+		cm.AddToSpeed(webapi.If("true", webapi.OpLimit, vehicleSpeedKey))
+	}
+
+	// Always block subnetwork edges via priority.
+	subnetworkKey := ev.SubnetworkKey(profile.Name)
+	if em.HasEncodedValue(subnetworkKey) {
+		cm.AddToPriority(webapi.If(subnetworkKey, webapi.OpMultiply, "0"))
+	}
+
 	return cm
 }
 

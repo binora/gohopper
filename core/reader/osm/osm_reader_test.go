@@ -325,3 +325,59 @@ func TestAcceptWay(t *testing.T) {
 	wayShort.SetTag("highway", "motorway")
 	assert.False(t, rdr.acceptWay(wayShort))
 }
+
+func TestAcceptWayWithIgnoredHighways(t *testing.T) {
+	em := routingutil.Start().
+		Add(ev.VehicleAccessCreate("car")).
+		Add(ev.VehicleSpeedCreate("car", 7, 2, true)).
+		Add(ev.RoundaboutCreate()).
+		Add(ev.RoadClassCreate()).
+		Add(ev.RoadClassLinkCreate()).
+		Add(ev.RoadEnvironmentCreate()).
+		Add(ev.MaxSpeedCreate()).
+		Add(ev.RoadAccessCreate()).
+		Add(ev.FerrySpeedCreate()).
+		Add(ev.OSMWayIDCreate()).
+		Build()
+
+	osmParsers := buildCarParsers(em)
+	osmParsers.AddIgnoredHighway("footway")
+	osmParsers.AddIgnoredHighway("cycleway")
+	osmParsers.AddIgnoredHighway("path")
+
+	config := routing.NewOSMReaderConfig()
+	dir := storage.NewRAMDirectory("", false)
+	graph := storage.NewBaseGraphBuilder(em.BytesForFlags).SetDir(dir).Build()
+	graph.Create(10)
+	rdr := NewOSMReader(graph, osmParsers, config)
+
+	// highway=residential → accepted (not in ignored list)
+	way := reader.NewReaderWay(1)
+	way.Nodes = []int64{1, 2}
+	way.SetTag("highway", "residential")
+	assert.True(t, rdr.acceptWay(way))
+
+	// highway=footway → rejected (in ignored list)
+	wayFoot := reader.NewReaderWay(2)
+	wayFoot.Nodes = []int64{1, 2}
+	wayFoot.SetTag("highway", "footway")
+	assert.False(t, rdr.acceptWay(wayFoot))
+
+	// highway=cycleway → rejected (in ignored list)
+	wayCycle := reader.NewReaderWay(3)
+	wayCycle.Nodes = []int64{1, 2}
+	wayCycle.SetTag("highway", "cycleway")
+	assert.False(t, rdr.acceptWay(wayCycle))
+
+	// highway=path → rejected (in ignored list)
+	wayPath := reader.NewReaderWay(4)
+	wayPath.Nodes = []int64{1, 2}
+	wayPath.SetTag("highway", "path")
+	assert.False(t, rdr.acceptWay(wayPath))
+
+	// highway=motorway → accepted (not in ignored list)
+	wayMotor := reader.NewReaderWay(5)
+	wayMotor.Nodes = []int64{1, 2}
+	wayMotor.SetTag("highway", "motorway")
+	assert.True(t, rdr.acceptWay(wayMotor))
+}

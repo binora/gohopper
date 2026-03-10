@@ -6,12 +6,12 @@ import (
 	"log"
 	"os"
 	"regexp"
-
 	"gohopper/core/config"
 	"gohopper/core/reader/osm"
 	"gohopper/core/routing"
 	"gohopper/core/routing/ev"
 	"gohopper/core/routing/parsers"
+	"gohopper/core/routing/subnetwork"
 	routingutil "gohopper/core/routing/util"
 	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
@@ -33,6 +33,8 @@ type GraphHopper struct {
 	osmFile         string
 	storeOnFlush    bool
 	fullyLoaded     bool
+	ignoredHighways []string
+	minNetworkSize  int
 	properties      map[string]string
 	initErr         error
 }
@@ -43,6 +45,7 @@ func NewGraphHopper() *GraphHopper {
 		routerConfig:   routing.NewRouterConfig(),
 		properties:     make(map[string]string),
 		storeOnFlush:   true,
+		minNetworkSize: 200,
 	}
 }
 
@@ -76,6 +79,8 @@ func (g *GraphHopper) Init(cfg GraphHopperConfig) *GraphHopper {
 	for _, p := range cfg.Profiles {
 		g.profilesByName[p.Name] = p
 	}
+	g.ignoredHighways = cfg.SplitCSV("import.osm.ignored_highways")
+	g.minNetworkSize = cfg.GetInt("prepare.min_network_size", 200)
 	g.initErr = validateProfileConfig(cfg)
 	return g
 }
@@ -166,6 +171,8 @@ func (g *GraphHopper) process() error {
 		return err
 	}
 
+	g.cleanUp(graph, em)
+
 	props := storage.NewStorableProperties(dir)
 	routingutil.PutEncodingManagerIntoProperties(em, props)
 
@@ -188,6 +195,19 @@ func (g *GraphHopper) process() error {
 	return nil
 }
 
+func (g *GraphHopper) cleanUp(graph *storage.BaseGraph, em *routingutil.EncodingManager) {
+	wf := weighting.NewDefaultWeightingFactory(graph, em)
+	var jobs []subnetwork.PrepareJob
+	for _, profile := range g.profilesByName {
+		subnetworkEnc := em.GetBooleanEncodedValue(ev.SubnetworkKey(profile.Name))
+		w := wf.CreateWeighting(profile, nil, false)
+		jobs = append(jobs, subnetwork.PrepareJob{SubnetworkEnc: subnetworkEnc, Weighting: w})
+	}
+	prs := subnetwork.NewPrepareRoutingSubnetworks(graph, jobs)
+	prs.SetMinNetworkSize(g.minNetworkSize)
+	prs.DoWork()
+}
+
 func (g *GraphHopper) buildRouter() {
 	wf := weighting.NewDefaultWeightingFactory(g.graph, g.encodingManager)
 	g.router = routing.NewRouter(g.graph, g.locationIndex, g.routerConfig, g.profilesByName, wf, g.encodingManager)
@@ -198,6 +218,7 @@ func (g *GraphHopper) buildEncodingManager() *routingutil.EncodingManager {
 		Add(ev.VehicleAccessCreate("car")).
 		Add(ev.VehicleSpeedCreate("car", 7, 2, true)).
 		AddTurnCostEncodedValue(ev.TurnCostCreate("car", 1)).
+		Add(ev.SubnetworkCreate("car")).
 		Add(ev.RoundaboutCreate()).
 		Add(ev.RoadClassCreate()).
 		Add(ev.RoadClassLinkCreate()).
@@ -211,6 +232,9 @@ func (g *GraphHopper) buildEncodingManager() *routingutil.EncodingManager {
 
 func (g *GraphHopper) buildOSMParsers(em *routingutil.EncodingManager) *routing.OSMParsers {
 	p := routing.NewOSMParsers()
+	for _, h := range g.ignoredHighways {
+		p.AddIgnoredHighway(h)
+	}
 	p.AddWayTagParser(parsers.NewOSMRoundaboutParser(em.GetBooleanEncodedValue(ev.RoundaboutKey)))
 	p.AddWayTagParser(parsers.NewOSMRoadClassParser(em.GetEncodedValue(ev.RoadClassKey).(*ev.EnumEncodedValue[ev.RoadClass])))
 	p.AddWayTagParser(parsers.NewOSMRoadClassLinkParser(em.GetBooleanEncodedValue(ev.RoadClassLinkKey)))

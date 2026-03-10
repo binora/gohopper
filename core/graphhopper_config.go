@@ -191,8 +191,9 @@ func (c GraphHopperConfig) GetFloat(key string, def float32) float32   { return 
 func (c GraphHopperConfig) GetDouble(key string, def float64) float64  { return getNumber(c, key, def) }
 func (c GraphHopperConfig) GetFloat64(key string, def float64) float64 { return c.GetDouble(key, def) }
 
-func (c GraphHopperConfig) SnapPreventionsDefault() []string {
-	s := c.GetString("routing.snap_preventions_default", "")
+// SplitCSV reads a comma-separated config value, trims whitespace, and returns non-empty parts.
+func (c GraphHopperConfig) SplitCSV(key string) []string {
+	s := c.GetString(key, "")
 	if s == "" {
 		return nil
 	}
@@ -203,4 +204,8 @@ func (c GraphHopperConfig) SnapPreventionsDefault() []string {
 		}
 	}
 	return out
+}
+
+func (c GraphHopperConfig) SnapPreventionsDefault() []string {
+	return c.SplitCSV("routing.snap_preventions_default")
 }

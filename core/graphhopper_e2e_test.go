@@ -29,20 +29,20 @@ const (
 	routeAPoints = 62
 
 	// Route A visited nodes per algorithm
-	routeAVisitedDijkstra   = 303
+	routeAVisitedDijkstra   = 301
 	routeAVisitedAStar      = 218
-	routeAVisitedDijkstraBi = 196
+	routeAVisitedDijkstraBi = 194
 	routeAVisitedAStarBi    = 124
 
 	// Route B: cross-town (42.5063, 1.5218) -> (42.5354, 1.5806)
 	routeBDist   = 6756.4
 	routeBTime   = int64(396148)
-	routeBPoints = 190
+	routeBPoints = 188
 
 	// Via route A->B->A
 	viaDist   = 3479.3
 	viaTime   = int64(249697)
-	viaPoints = 117
+	viaPoints = 116
 )
 
 var (
