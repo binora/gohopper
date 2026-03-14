@@ -115,6 +115,10 @@ func (sp *StorableProperties) Create(size int64) *StorableProperties {
 	return sp
 }
 
+func (sp *StorableProperties) GetCapacity() int64 {
+	return sp.da.Capacity()
+}
+
 func (sp *StorableProperties) ContainsVersion() bool {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()

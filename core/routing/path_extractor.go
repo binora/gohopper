@@ -59,13 +59,13 @@ func (pe *pathExtractor) followParentsUntilRoot(sptEntry *SPTEntry) *SPTEntry {
 func (pe *pathExtractor) onEdge(edge, adjNode, prevEdge int) {
 	edgeState := pe.graph.GetEdgeIteratorState(edge, adjNode)
 	pe.path.AddDistance(edgeState.GetDistance())
-	pe.path.AddTime(calcMillisWithTurnMillis(pe.weighting, edgeState, false, prevEdge))
+	pe.path.AddTime(CalcMillisWithTurnMillis(pe.weighting, edgeState, false, prevEdge))
 	pe.path.AddEdge(edge)
 }
 
-// calcMillisWithTurnMillis calculates the time in milliseconds to traverse an edge,
+// CalcMillisWithTurnMillis calculates the time in milliseconds to traverse an edge,
 // including turn costs from the previous edge.
-func calcMillisWithTurnMillis(w weighting.Weighting, edgeState util.EdgeIteratorState, reverse bool, prevOrNextEdgeID int) int64 {
+func CalcMillisWithTurnMillis(w weighting.Weighting, edgeState util.EdgeIteratorState, reverse bool, prevOrNextEdgeID int) int64 {
 	edgeMillis := w.CalcEdgeMillis(edgeState, reverse)
 	if edgeMillis == math.MaxInt64 {
 		return edgeMillis

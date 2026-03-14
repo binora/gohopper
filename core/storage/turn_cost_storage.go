@@ -75,6 +75,10 @@ func (tc *TurnCostStorage) Count() int {
 	return tc.count
 }
 
+func (tc *TurnCostStorage) GetCapacity() int64 {
+	return tc.da.Capacity()
+}
+
 func (tc *TurnCostStorage) FindOrCreateEntry(na NodeAccess, fromEdge, viaNode, toEdge int) int {
 	idx := na.GetTurnCostIndex(viaNode)
 	prevIdx := NoTurnEntry

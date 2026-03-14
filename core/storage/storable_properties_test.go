@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -51,4 +52,48 @@ func TestStorableProperties_ContainsVersion(t *testing.T) {
 		t.Fatal("expected ContainsVersion true after setting nodes.version")
 	}
 	sp.Close()
+}
+
+func TestStorableProperties_StoreLarge(t *testing.T) {
+	path := testDir(t)
+	dir := NewRAMDirectory(path, true).Init().(*GHDirectory)
+	sp := NewStorableProperties(dir)
+	sp.Create(100)
+
+	const n = 100001
+	for i := range n {
+		sp.Put(fmt.Sprintf("%d", i), fmt.Sprintf("test.%d", i))
+	}
+	sp.Flush()
+	cap1 := sp.GetCapacity()
+	sp.Close()
+	dir.Close()
+
+	dir2 := NewRAMDirectory(path, true).Init().(*GHDirectory)
+	sp2 := NewStorableProperties(dir2)
+	if !sp2.LoadExisting() {
+		t.Fatal("expected LoadExisting true")
+	}
+	if sp2.GetCapacity() != cap1 {
+		t.Fatalf("capacity mismatch: before=%d, after=%d", cap1, sp2.GetCapacity())
+	}
+	if got := sp2.Get("0"); got != "test.0" {
+		t.Fatalf("expected 'test.0', got %q", got)
+	}
+	if got := sp2.Get("100000"); got != "test.100000" {
+		t.Fatalf("expected 'test.100000', got %q", got)
+	}
+	sp2.Close()
+	dir2.Close()
+}
+
+func TestStorableProperties_LoadProperties(t *testing.T) {
+	m := make(map[string]string)
+	loadProperties(m, "blup=test\n blup2 = xy")
+	if m["blup"] != "test" {
+		t.Fatalf("expected 'test', got %q", m["blup"])
+	}
+	if m["blup2"] != "xy" {
+		t.Fatalf("expected 'xy', got %q", m["blup2"])
+	}
 }

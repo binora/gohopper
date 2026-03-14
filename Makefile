@@ -20,14 +20,17 @@ GO_PORT := 8080
 
 CONFORMANCE_CASES ?= testdata/conformance/route_cases.json
 
-.PHONY: test conformance parity ci
+.PHONY: test build lint conformance parity ci
 
 test:
 	mkdir -p "$(GOCACHE)"
 	GOCACHE="$(GOCACHE)" $(GO) test ./...
 
 build:
-	$(GO) build -o gohopper ./cmd/gohopper
+	$(GO) build ./...
+
+lint:
+	golangci-lint run ./...
 
 conformance:
 	GO="$(GO)" \

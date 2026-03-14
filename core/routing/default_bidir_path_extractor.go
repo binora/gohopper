@@ -84,6 +84,6 @@ func (e *DefaultBidirPathExtractor) followParentsUntilRoot(sptEntry *SPTEntry, r
 func (e *DefaultBidirPathExtractor) onEdge(edge, adjNode int, reverse bool, prevOrNextEdge int) {
 	edgeState := e.graph.GetEdgeIteratorState(edge, adjNode)
 	e.path.AddDistance(edgeState.GetDistance())
-	e.path.AddTime(calcMillisWithTurnMillis(e.weighting, edgeState, reverse, prevOrNextEdge))
+	e.path.AddTime(CalcMillisWithTurnMillis(e.weighting, edgeState, reverse, prevOrNextEdge))
 	e.path.AddEdge(edge)
 }

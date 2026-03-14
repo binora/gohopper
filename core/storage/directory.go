@@ -3,7 +3,8 @@ package storage
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -24,11 +25,17 @@ type Directory interface {
 	DAs() map[string]DataAccess
 }
 
+type preloadEntry struct {
+	pattern string
+	value   int
+}
+
 // GHDirectory implements Directory, managing multiple DataAccess objects.
 type GHDirectory struct {
 	location     string
 	typeFallback DAType
 	defaultTypes map[string]DAType
+	preloads     []preloadEntry
 	das          map[string]DataAccess
 	mu           sync.Mutex
 }
@@ -60,7 +67,7 @@ func (d *GHDirectory) Location() string { return d.location }
 
 func (d *GHDirectory) getDefault(name string) DAType {
 	for pattern, dt := range d.defaultTypes {
-		if matched, _ := filepath.Match(pattern, name); matched {
+		if matched, _ := regexp.MatchString("^"+pattern+"$", name); matched {
 			return dt
 		}
 	}
@@ -163,4 +170,35 @@ func (d *GHDirectory) Init() Directory {
 
 func (d *GHDirectory) DAs() map[string]DataAccess {
 	return d.das
+}
+
+// Configure applies type and preload settings from an ordered list of key-value pairs.
+// Keys without a "preload." prefix set the default DAType for matching DataAccess names.
+// Keys with a "preload." prefix set the preload percentage for matching names.
+// Pattern matching uses Java-compatible regex (String.matches semantics).
+func (d *GHDirectory) Configure(entries [][2]string) {
+	d.preloads = nil
+	for _, kv := range entries {
+		key, value := kv[0], strings.TrimSpace(kv[1])
+		if strings.HasPrefix(key, "preload.") {
+			pattern := key[len("preload."):]
+			v, err := strconv.Atoi(value)
+			if err != nil {
+				panic(fmt.Sprintf("DataAccess %s has an incorrect preload value: %s", key, value))
+			}
+			d.preloads = append(d.preloads, preloadEntry{pattern: pattern, value: v})
+		} else {
+			d.defaultTypes[key] = DATypeFromString(value)
+		}
+	}
+}
+
+// GetPreload returns the preload value for the given name, or 0 if no pattern matches.
+func (d *GHDirectory) GetPreload(name string) int {
+	for _, e := range d.preloads {
+		if matched, _ := regexp.MatchString("^"+e.pattern+"$", name); matched {
+			return e.value
+		}
+	}
+	return 0
 }
