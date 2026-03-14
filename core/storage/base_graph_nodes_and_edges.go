@@ -312,6 +312,15 @@ func (s *BaseGraphNodesAndEdges) GetDist(edgePtr int64) float64 {
 }
 
 func (s *BaseGraphNodesAndEdges) SetGeoRef(edgePtr int64, geoRef int64) {
+	highest25Bits := int(uint64(geoRef) >> 39)
+	// Only two cases are allowed: positive geoRef → all high bits 0, negative → all high bits 1.
+	if highest25Bits != 0 && highest25Bits != 0x1_FF_FFFF {
+		dir := "large "
+		if geoRef < 0 {
+			dir = "small "
+		}
+		panic(fmt.Sprintf("geoRef is too %s%d", dir, geoRef))
+	}
 	s.edges.SetInt(edgePtr+int64(s.eGeo), int32(geoRef))
 	s.edges.SetByte(edgePtr+int64(s.eGeo)+4, byte(geoRef>>32))
 }

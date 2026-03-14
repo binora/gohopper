@@ -86,6 +86,18 @@ func (sp *StorableProperties) GetAll() map[string]string {
 	return out
 }
 
+func (sp *StorableProperties) PutAll(m map[string]string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	for k, v := range m {
+		sp.props[k] = v
+	}
+}
+
+func (sp *StorableProperties) GetDirectory() Directory {
+	return sp.dir
+}
+
 func (sp *StorableProperties) Close() {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()

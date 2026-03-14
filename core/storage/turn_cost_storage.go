@@ -14,7 +14,6 @@ const (
 	bytesPerTCEntry = 16
 )
 
-// TurnCostStorage stores turn restrictions/costs using a linked-list per node.
 type TurnCostStorage struct {
 	da    DataAccess
 	count int
@@ -130,7 +129,7 @@ func (tc *TurnCostStorage) findIndex(na NodeAccess, fromEdge, viaNode, toEdge in
 	}
 	const maxEntries = 1000
 	idx := na.GetTurnCostIndex(viaNode)
-	for i := 0; i < maxEntries; i++ {
+	for range maxEntries {
 		if idx == NoTurnEntry {
 			return -1
 		}
@@ -167,7 +166,6 @@ func (tc *TurnCostStorage) SetBool(na NodeAccess, bev ev.BooleanEncodedValue, fr
 	bev.SetBool(false, idx, &tcEdgeIntAccess{tc}, value)
 }
 
-// SortEdges updates from/to edge references in all turn cost entries using the given mapping.
 func (tc *TurnCostStorage) SortEdges(getNewEdge func(int) int) {
 	for i := range tc.count {
 		ptr := tc.toPointer(i)
@@ -176,13 +174,10 @@ func (tc *TurnCostStorage) SortEdges(getNewEdge func(int) int) {
 	}
 }
 
-// tcEntry holds a snapshot of one turn cost entry for rebuilding the linked list.
 type tcEntry struct {
 	from, to, flags, next int32
 }
 
-// SortNodes rebuilds the turn cost linked list to match new node ordering.
-// It snapshots all entries, then writes them back in node order.
 func (tc *TurnCostStorage) SortNodes(nodeCount int, na NodeAccess) {
 	entries := make([]tcEntry, tc.count)
 	for i := range tc.count {
@@ -228,4 +223,93 @@ func (tc *TurnCostStorage) SetDecimal(na NodeAccess, dev ev.DecimalEncodedValue,
 		panic("invalid turn cost entry index")
 	}
 	dev.SetDecimal(false, idx, &tcEdgeIntAccess{tc}, cost)
+}
+
+func (tc *TurnCostStorage) GetTurnCostsCount(na NodeAccess, node int) int {
+	idx := na.GetTurnCostIndex(node)
+	count := 0
+	for idx != NoTurnEntry {
+		ptr := tc.toPointer(idx)
+		idx = int(tc.da.GetInt(ptr + tcNext))
+		count++
+	}
+	return count
+}
+
+type TurnCostIterator struct {
+	tc            *TurnCostStorage
+	na            NodeAccess
+	nodeCount     int
+	viaNode       int
+	turnCostIndex int
+	intsRef       *IntsRef
+	eia           ev.EdgeIntAccess
+}
+
+func (tc *TurnCostStorage) GetAllTurnCosts(na NodeAccess, nodeCount int) *TurnCostIterator {
+	ref := NewIntsRef(1)
+	return &TurnCostIterator{
+		tc:            tc,
+		na:            na,
+		nodeCount:     nodeCount,
+		viaNode:       -1,
+		turnCostIndex: NoTurnEntry,
+		intsRef:       ref,
+		eia:           NewIntsRefEdgeIntAccess(ref),
+	}
+}
+
+func (it *TurnCostIterator) turnCostPtr() int64 {
+	return it.tc.toPointer(it.turnCostIndex)
+}
+
+func (it *TurnCostIterator) GetFromEdge() int {
+	return int(it.tc.da.GetInt(it.turnCostPtr() + tcFrom))
+}
+
+func (it *TurnCostIterator) GetViaNode() int {
+	return it.viaNode
+}
+
+func (it *TurnCostIterator) GetToEdge() int {
+	return int(it.tc.da.GetInt(it.turnCostPtr() + tcTo))
+}
+
+func (it *TurnCostIterator) GetBool(bev ev.BooleanEncodedValue) bool {
+	it.intsRef.Ints[0] = it.tc.da.GetInt(it.turnCostPtr() + tcFlags)
+	return bev.GetBool(false, -1, it.eia)
+}
+
+func (it *TurnCostIterator) GetCost(dev ev.DecimalEncodedValue) float64 {
+	it.intsRef.Ints[0] = it.tc.da.GetInt(it.turnCostPtr() + tcFlags)
+	return dev.GetDecimal(false, -1, it.eia)
+}
+
+func (it *TurnCostIterator) Next() bool {
+	if it.nextTCI() {
+		return true
+	}
+	for it.nextNode() {
+		if it.turnCostIndex != NoTurnEntry {
+			return true
+		}
+	}
+	return false
+}
+
+func (it *TurnCostIterator) nextNode() bool {
+	it.viaNode++
+	if it.viaNode >= it.nodeCount {
+		return false
+	}
+	it.turnCostIndex = it.na.GetTurnCostIndex(it.viaNode)
+	return true
+}
+
+func (it *TurnCostIterator) nextTCI() bool {
+	if it.turnCostIndex == NoTurnEntry {
+		return false
+	}
+	it.turnCostIndex = int(it.tc.da.GetInt(it.turnCostPtr() + tcNext))
+	return it.turnCostIndex != NoTurnEntry
 }
