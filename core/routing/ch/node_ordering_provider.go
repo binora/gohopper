@@ -24,3 +24,15 @@ func NodeOrderingFromArray(nodes ...int) NodeOrderingProvider {
 	copy(cp, nodes)
 	return &arrayOrdering{nodes: cp}
 }
+
+type funcOrdering struct {
+	numNodes int
+	fn       func(int) int
+}
+
+func (o *funcOrdering) GetNodeIdForLevel(level int) int { return o.fn(level) }
+func (o *funcOrdering) GetNumNodes() int                { return o.numNodes }
+
+func NodeOrderingFromFunc(numNodes int, fn func(int) int) NodeOrderingProvider {
+	return &funcOrdering{numNodes: numNodes, fn: fn}
+}

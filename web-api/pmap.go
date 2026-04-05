@@ -48,6 +48,20 @@ func (m PMap) GetString(key, def string) string {
 	return fmt.Sprint(v)
 }
 
+func (m PMap) GetInt(key string, def int) int {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return def
+	}
+	if i, ok := v.(int); ok {
+		return i
+	}
+	if f, ok := v.(float64); ok {
+		return int(f)
+	}
+	return def
+}
+
 func (m PMap) GetFloat64(key string, def float64) float64 {
 	v, ok := m[key]
 	if !ok || v == nil {

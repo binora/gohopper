@@ -265,9 +265,7 @@ func (c *EdgeBasedNodeContractor) updateHierarchyDepthsOfNeighbors(node int, nei
 		if n == node {
 			continue
 		}
-		if level+1 > c.hierarchyDepths[n] {
-			c.hierarchyDepths[n] = level + 1
-		}
+		c.hierarchyDepths[n] = max(c.hierarchyDepths[n], level+1)
 	}
 }
 
