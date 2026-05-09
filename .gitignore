@@ -50,3 +50,4 @@ cgiarprovider/
 web/node/
 web-bundle/node/
 
+.codex
