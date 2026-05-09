@@ -21,6 +21,7 @@ type AbstractBidirCHAlgo struct {
 
 	inEdgeExplorer  storage.RoutingCHEdgeExplorer
 	outEdgeExplorer storage.RoutingCHEdgeExplorer
+	innerExplorer   util.EdgeExplorer
 
 	from        int
 	to          int
@@ -59,6 +60,7 @@ type AbstractBidirCHAlgo struct {
 	Name string
 
 	CreatePathExtractorFn func() BidirPathExtractor
+	PreInitFn             func(from int, fromWeight float64, to int, toWeight float64)
 	CreateStartEntryFn    func(node int, weight float64, reverse bool) *SPTEntry
 	CreateCHEntryFn       func(edge, adjNode, incEdge int, weight float64, parent *SPTEntry, reverse bool) *SPTEntry
 	FromEntryCanBeSkipped func() bool
@@ -75,6 +77,7 @@ func NewAbstractBidirCHAlgo(graph storage.RoutingCHGraph, tMode routingutil.Trav
 		TraversalMode:     tMode,
 		inEdgeExplorer:    graph.CreateInEdgeExplorer(),
 		outEdgeExplorer:   graph.CreateOutEdgeExplorer(),
+		innerExplorer:     graph.GetBaseGraph().CreateEdgeExplorer(routingutil.AllEdges),
 		fromOutEdge:       util.AnyEdge,
 		toInEdge:          util.AnyEdge,
 		BestWeight:        math.MaxFloat64,
@@ -112,6 +115,9 @@ func (a *AbstractBidirCHAlgo) CalcPaths(from, to int) []*Path {
 }
 
 func (a *AbstractBidirCHAlgo) init(from int, fromWeight float64, to int, toWeight float64) {
+	if a.PreInitFn != nil {
+		a.PreInitFn(from, fromWeight, to, toWeight)
+	}
 	a.initFrom(from, fromWeight)
 	a.initTo(to, toWeight)
 	a.postInit(from, to)
@@ -139,7 +145,7 @@ func (a *AbstractBidirCHAlgo) postInit(from, to int) {
 	if !a.TraversalMode.IsEdgeBased() {
 		if a.updateBestPath {
 			a.bestWeightMapOther = a.bestWeightMapFrom
-			a.updateBestPathEntry(a.currFrom, to, true)
+			a.updateBestPathEntry(a.currFrom, util.NoEdge, to, true)
 		}
 	} else if from == to && a.fromOutEdge == util.AnyEdge && a.toInEdge == util.AnyEdge {
 		if a.currFrom.Weight != 0 || a.currTo.Weight != 0 {
@@ -157,25 +163,38 @@ func (a *AbstractBidirCHAlgo) postInit(from, to int) {
 }
 
 func (a *AbstractBidirCHAlgo) postInitFrom() {
-	if a.fromOutEdge == util.AnyEdge {
-		a.fillEdgesFromUsingFilter(a.levelEdgeFilter)
-		return
-	}
-	filter := a.levelEdgeFilter
-	a.fillEdgesFromUsingFilter(func(edge storage.RoutingCHEdgeIteratorState) bool {
-		return (filter == nil || filter(edge)) && util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyFirst()) == a.fromOutEdge
-	})
+	a.fillEdgesFromUsingFilter(a.initialEdgeFilter(a.fromOutEdge, true))
 }
 
 func (a *AbstractBidirCHAlgo) postInitTo() {
-	if a.toInEdge == util.AnyEdge {
-		a.fillEdgesToUsingFilter(a.levelEdgeFilter)
-		return
+	a.fillEdgesToUsingFilter(a.initialEdgeFilter(a.toInEdge, false))
+}
+
+func (a *AbstractBidirCHAlgo) initialEdgeFilter(restrictedEdge int, firstOrigEdge bool) storage.CHEdgeFilter {
+	if restrictedEdge == util.AnyEdge {
+		if a.TraversalMode.IsEdgeBased() {
+			return storage.AllCHEdges
+		}
+		return a.levelEdgeFilter
 	}
-	filter := a.levelEdgeFilter
-	a.fillEdgesToUsingFilter(func(edge storage.RoutingCHEdgeIteratorState) bool {
-		return (filter == nil || filter(edge)) && util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyLast()) == a.toInEdge
-	})
+
+	levelFilter := a.levelEdgeFilter
+	if a.TraversalMode.IsEdgeBased() {
+		levelFilter = nil
+	}
+	return func(edge storage.RoutingCHEdgeIteratorState) bool {
+		if levelFilter != nil && !levelFilter(edge) {
+			return false
+		}
+		return edgeMatchesOrigEdge(edge, restrictedEdge, firstOrigEdge)
+	}
+}
+
+func edgeMatchesOrigEdge(edge storage.RoutingCHEdgeIteratorState, origEdge int, firstOrigEdge bool) bool {
+	if firstOrigEdge {
+		return util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyFirst()) == origEdge
+	}
+	return util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyLast()) == origEdge
 }
 
 func (a *AbstractBidirCHAlgo) fillEdgesFromUsingFilter(edgeFilter storage.CHEdgeFilter) {
@@ -189,9 +208,8 @@ func (a *AbstractBidirCHAlgo) fillEdgesToUsingFilter(edgeFilter storage.CHEdgeFi
 func (a *AbstractBidirCHAlgo) withLevelEdgeFilter(edgeFilter storage.CHEdgeFilter, fillEdges func() bool) bool {
 	prev := a.levelEdgeFilter
 	a.levelEdgeFilter = edgeFilter
-	ok := fillEdges()
-	a.levelEdgeFilter = prev
-	return ok
+	defer func() { a.levelEdgeFilter = prev }()
+	return fillEdges()
 }
 
 func (a *AbstractBidirCHAlgo) runAlgo() {
@@ -277,7 +295,8 @@ func (a *AbstractBidirCHAlgo) fillEdges(currEdge *SPTEntry, prioQueue *sptEntryH
 		a.replaceBestEntry(entry, newEntry, reverse)
 
 		if a.updateBestPath {
-			a.updateBestPathEntry(newEntry, traversalID, reverse)
+			origEdgeID := a.getOrigEdgeID(iter, reverse)
+			a.updateBestPathEntry(newEntry, origEdgeID, traversalID, reverse)
 		}
 	}
 }
@@ -306,7 +325,9 @@ func (a *AbstractBidirCHAlgo) createEntry(edge storage.RoutingCHEdgeIteratorStat
 	if a.CreateCHEntryFn != nil {
 		return a.CreateCHEntryFn(edge.GetEdge(), edge.GetAdjNode(), incEdge, weight, parent, reverse)
 	}
-	return NewSPTEntryFull(edge.GetEdge(), edge.GetAdjNode(), weight, parent)
+	entry := NewSPTEntryFull(edge.GetEdge(), edge.GetAdjNode(), weight, parent)
+	entry.IncEdge = incEdge
+	return entry
 }
 
 func (a *AbstractBidirCHAlgo) calcWeight(iter storage.RoutingCHEdgeIteratorState, currEdge *SPTEntry, reverse bool) float64 {
@@ -346,6 +367,9 @@ func (a *AbstractBidirCHAlgo) getIncomingEdge(entry *SPTEntry) int {
 	if entry == nil {
 		return util.NoEdge
 	}
+	if a.TraversalMode.IsEdgeBased() {
+		return entry.IncEdge
+	}
 	return entry.Edge
 }
 
@@ -367,7 +391,12 @@ func (a *AbstractBidirCHAlgo) getOrigEdgeKey(edge storage.RoutingCHEdgeIteratorS
 	return edge.GetOrigEdgeKeyLast()
 }
 
-func (a *AbstractBidirCHAlgo) updateBestPathEntry(entry *SPTEntry, traversalID int, reverse bool) {
+func (a *AbstractBidirCHAlgo) updateBestPathEntry(entry *SPTEntry, origEdgeID, traversalID int, reverse bool) {
+	if a.TraversalMode.IsEdgeBased() {
+		a.updateBestPathEdgeBased(entry, origEdgeID, reverse)
+		return
+	}
+
 	entryOther, ok := a.bestWeightMapOther[traversalID]
 	if !ok {
 		return
@@ -383,6 +412,57 @@ func (a *AbstractBidirCHAlgo) updateBestPathEntry(entry *SPTEntry, traversalID i
 			a.BestBwdEntry = entryOther
 		}
 		a.BestWeight = weight
+	}
+}
+
+func (a *AbstractBidirCHAlgo) updateBestPathEdgeBased(entry *SPTEntry, origEdgeID int, reverse bool) {
+	oppositeNode := a.to
+	oppositeEdge := a.toInEdge
+	if reverse {
+		oppositeNode = a.from
+		oppositeEdge = a.fromOutEdge
+	}
+	if entry.AdjNode == oppositeNode && (oppositeEdge == util.AnyEdge || origEdgeID == oppositeEdge) {
+		weight := entry.GetWeightOfVisitedPath()
+		if weight < a.BestWeight {
+			if reverse {
+				a.BestFwdEntry = NewSPTEntry(oppositeNode, 0)
+				a.BestBwdEntry = entry
+			} else {
+				a.BestFwdEntry = entry
+				a.BestBwdEntry = NewSPTEntry(oppositeNode, 0)
+			}
+			a.BestWeight = weight
+			return
+		}
+	}
+
+	iter := a.innerExplorer.SetBaseNode(entry.AdjNode)
+	for iter.Next() {
+		traversalID := a.TraversalMode.CreateTraversalID(iter, reverse)
+		entryOther := a.bestWeightMapOther[traversalID]
+		if entryOther == nil {
+			continue
+		}
+
+		edgeID := iter.GetEdge()
+		var turnWeight float64
+		if reverse {
+			turnWeight = a.Graph.GetTurnWeight(edgeID, iter.GetBaseNode(), origEdgeID)
+		} else {
+			turnWeight = a.Graph.GetTurnWeight(origEdgeID, iter.GetBaseNode(), edgeID)
+		}
+		weight := entry.GetWeightOfVisitedPath() + entryOther.GetWeightOfVisitedPath() + turnWeight
+		if weight < a.BestWeight {
+			if reverse {
+				a.BestFwdEntry = entryOther
+				a.BestBwdEntry = entry
+			} else {
+				a.BestFwdEntry = entry
+				a.BestBwdEntry = entryOther
+			}
+			a.BestWeight = weight
+		}
 	}
 }
 

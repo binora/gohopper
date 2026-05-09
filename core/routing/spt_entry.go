@@ -11,6 +11,7 @@ import (
 // actual path weight.
 type SPTEntry struct {
 	Edge                int
+	IncEdge             int
 	AdjNode             int
 	Weight              float64
 	WeightOfVisitedPath float64
@@ -21,6 +22,7 @@ type SPTEntry struct {
 func NewSPTEntry(node int, weight float64) *SPTEntry {
 	return &SPTEntry{
 		Edge:                util.NoEdge,
+		IncEdge:             util.NoEdge,
 		AdjNode:             node,
 		Weight:              weight,
 		WeightOfVisitedPath: weight,
@@ -30,6 +32,7 @@ func NewSPTEntry(node int, weight float64) *SPTEntry {
 func NewSPTEntryFull(edgeID, adjNode int, weight float64, parent *SPTEntry) *SPTEntry {
 	return &SPTEntry{
 		Edge:                edgeID,
+		IncEdge:             edgeID,
 		AdjNode:             adjNode,
 		Weight:              weight,
 		WeightOfVisitedPath: weight,
@@ -42,9 +45,21 @@ func NewSPTEntryFull(edgeID, adjNode int, weight float64, parent *SPTEntry) *SPT
 func NewSPTEntryWithHeuristic(edgeID, adjNode int, heapWeight, pathWeight float64, parent *SPTEntry) *SPTEntry {
 	return &SPTEntry{
 		Edge:                edgeID,
+		IncEdge:             edgeID,
 		AdjNode:             adjNode,
 		Weight:              heapWeight,
 		WeightOfVisitedPath: pathWeight,
+		Parent:              parent,
+	}
+}
+
+func newSPTEntryWithIncEdge(edgeID, incEdge, adjNode int, weight float64, parent *SPTEntry) *SPTEntry {
+	return &SPTEntry{
+		Edge:                edgeID,
+		IncEdge:             incEdge,
+		AdjNode:             adjNode,
+		Weight:              weight,
+		WeightOfVisitedPath: weight,
 		Parent:              parent,
 	}
 }

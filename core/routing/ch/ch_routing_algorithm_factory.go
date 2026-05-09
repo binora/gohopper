@@ -21,7 +21,7 @@ type CHRoutingAlgorithmFactory struct {
 	routingCHGraph storage.RoutingCHGraph
 }
 
-type nodeBasedCHAlgo interface {
+type chAlgoWithPathExtractor interface {
 	routing.EdgeToEdgeRoutingAlgorithm
 	SetPathExtractorSupplier(func() routing.BidirPathExtractor)
 }
@@ -47,10 +47,7 @@ func (f *CHRoutingAlgorithmFactory) CreateAlgo(opts webapi.PMap) routing.EdgeToE
 }
 
 func (f *CHRoutingAlgorithmFactory) createAlgoNodeBased(opts webapi.PMap) routing.EdgeToEdgeRoutingAlgorithm {
-	algoName := strings.ToLower(opts.GetString(chRoutingAlgorithmKey, routing.AlgoDijkstraBi))
-	if algoName == "" {
-		algoName = routing.AlgoDijkstraBi
-	}
+	algoName := chAlgoName(opts, routing.AlgoDijkstraBi)
 
 	switch algoName {
 	case routing.AlgoDijkstraBi:
@@ -65,7 +62,7 @@ func (f *CHRoutingAlgorithmFactory) createAlgoNodeBased(opts webapi.PMap) routin
 	}
 }
 
-func (f *CHRoutingAlgorithmFactory) withNodeBasedPathExtractor(algo nodeBasedCHAlgo) routing.EdgeToEdgeRoutingAlgorithm {
+func (f *CHRoutingAlgorithmFactory) withNodeBasedPathExtractor(algo chAlgoWithPathExtractor) routing.EdgeToEdgeRoutingAlgorithm {
 	algo.SetPathExtractorSupplier(func() routing.BidirPathExtractor {
 		return NewNodeBasedCHBidirPathExtractor(f.routingCHGraph)
 	})
@@ -73,9 +70,31 @@ func (f *CHRoutingAlgorithmFactory) withNodeBasedPathExtractor(algo nodeBasedCHA
 }
 
 func (f *CHRoutingAlgorithmFactory) createAlgoEdgeBased(opts webapi.PMap) routing.EdgeToEdgeRoutingAlgorithm {
-	algoName := strings.ToLower(opts.GetString(chRoutingAlgorithmKey, routing.AlgoAStarBi))
-	if algoName == "" {
-		algoName = routing.AlgoAStarBi
+	algoName := chAlgoName(opts, routing.AlgoAStarBi)
+
+	switch algoName {
+	case routing.AlgoAStarBi:
+		return f.withEdgeBasedPathExtractor(routing.NewAStarBidirectionEdgeCHNoSOD(f.routingCHGraph))
+	case routing.AlgoDijkstraBi:
+		return f.withEdgeBasedPathExtractor(routing.NewDijkstraBidirectionEdgeCHNoSOD(f.routingCHGraph))
+	case routing.AlgoAltRoute:
+		panic(fmt.Sprintf("algorithm %q not yet supported for edge-based Contraction Hierarchies", algoName))
+	default:
+		panic(fmt.Sprintf("algorithm %q not supported for edge-based Contraction Hierarchies", algoName))
 	}
-	panic(fmt.Sprintf("algorithm %q not yet supported for edge-based Contraction Hierarchies", algoName))
+}
+
+func (f *CHRoutingAlgorithmFactory) withEdgeBasedPathExtractor(algo chAlgoWithPathExtractor) routing.EdgeToEdgeRoutingAlgorithm {
+	algo.SetPathExtractorSupplier(func() routing.BidirPathExtractor {
+		return NewEdgeBasedCHBidirPathExtractor(f.routingCHGraph)
+	})
+	return algo
+}
+
+func chAlgoName(opts webapi.PMap, defaultAlgo string) string {
+	algoName := strings.ToLower(opts.GetString(chRoutingAlgorithmKey, defaultAlgo))
+	if algoName == "" {
+		return defaultAlgo
+	}
+	return algoName
 }
