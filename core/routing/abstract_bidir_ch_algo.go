@@ -186,15 +186,15 @@ func (a *AbstractBidirCHAlgo) initialEdgeFilter(restrictedEdge int, firstOrigEdg
 		if levelFilter != nil && !levelFilter(edge) {
 			return false
 		}
-		return edgeMatchesOrigEdge(edge, restrictedEdge, firstOrigEdge)
+		return origEdgeID(edge, firstOrigEdge) == restrictedEdge
 	}
 }
 
-func edgeMatchesOrigEdge(edge storage.RoutingCHEdgeIteratorState, origEdge int, firstOrigEdge bool) bool {
+func origEdgeID(edge storage.RoutingCHEdgeIteratorState, firstOrigEdge bool) int {
 	if firstOrigEdge {
-		return util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyFirst()) == origEdge
+		return util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyFirst())
 	}
-	return util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyLast()) == origEdge
+	return util.GetEdgeFromEdgeKey(edge.GetOrigEdgeKeyLast())
 }
 
 func (a *AbstractBidirCHAlgo) fillEdgesFromUsingFilter(edgeFilter storage.CHEdgeFilter) {
@@ -358,9 +358,17 @@ func (a *AbstractBidirCHAlgo) createTraversalID(edge storage.RoutingCHEdgeIterat
 		return edge.GetAdjNode()
 	}
 	if reverse {
-		return edge.GetOrigEdgeKeyFirst()
+		return reverseTraversalID(edge)
 	}
 	return edge.GetOrigEdgeKeyLast()
+}
+
+func reverseTraversalID(edge storage.RoutingCHEdgeIteratorState) int {
+	key := edge.GetOrigEdgeKeyFirst()
+	if edge.IsShortcut() || edge.GetBaseNode() == edge.GetAdjNode() {
+		return key
+	}
+	return util.ReverseEdgeKey(key)
 }
 
 func (a *AbstractBidirCHAlgo) getIncomingEdge(entry *SPTEntry) int {
@@ -404,14 +412,7 @@ func (a *AbstractBidirCHAlgo) updateBestPathEntry(entry *SPTEntry, origEdgeID, t
 
 	weight := entry.GetWeightOfVisitedPath() + entryOther.GetWeightOfVisitedPath()
 	if weight < a.BestWeight {
-		if reverse {
-			a.BestFwdEntry = entryOther
-			a.BestBwdEntry = entry
-		} else {
-			a.BestFwdEntry = entry
-			a.BestBwdEntry = entryOther
-		}
-		a.BestWeight = weight
+		a.updateBestEntries(entry, entryOther, weight, reverse)
 	}
 }
 
@@ -454,16 +455,20 @@ func (a *AbstractBidirCHAlgo) updateBestPathEdgeBased(entry *SPTEntry, origEdgeI
 		}
 		weight := entry.GetWeightOfVisitedPath() + entryOther.GetWeightOfVisitedPath() + turnWeight
 		if weight < a.BestWeight {
-			if reverse {
-				a.BestFwdEntry = entryOther
-				a.BestBwdEntry = entry
-			} else {
-				a.BestFwdEntry = entry
-				a.BestBwdEntry = entryOther
-			}
-			a.BestWeight = weight
+			a.updateBestEntries(entry, entryOther, weight, reverse)
 		}
 	}
+}
+
+func (a *AbstractBidirCHAlgo) updateBestEntries(entry, entryOther *SPTEntry, weight float64, reverse bool) {
+	if reverse {
+		a.BestFwdEntry = entryOther
+		a.BestBwdEntry = entry
+	} else {
+		a.BestFwdEntry = entry
+		a.BestBwdEntry = entryOther
+	}
+	a.BestWeight = weight
 }
 
 func (a *AbstractBidirCHAlgo) extractPath() *Path {
