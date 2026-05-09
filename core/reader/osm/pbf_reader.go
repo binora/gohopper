@@ -22,13 +22,13 @@ func ReadFile(path string, handler ElementHandler, skip SkipOptions) error {
 	if err != nil {
 		return fmt.Errorf("cannot open OSM file %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner, err := newScanner(f, path, skip)
 	if err != nil {
 		return err
 	}
-	defer scanner.Close()
+	defer func() { _ = scanner.Close() }()
 
 	for scanner.Scan() {
 		obj := scanner.Object()

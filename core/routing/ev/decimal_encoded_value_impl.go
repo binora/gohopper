@@ -47,11 +47,11 @@ func (d *DecimalEncodedValueImpl) SetDecimal(reverse bool, edgeID int, eia EdgeI
 
 	if d.UseMaximumAsInfinity {
 		if math.IsInf(value, 0) {
-			d.IntEncodedValueImpl.SetInt(reverse, edgeID, eia, d.MaxStorableValue)
+			d.SetInt(reverse, edgeID, eia, d.MaxStorableValue)
 			return
 		}
 		if value >= float64(d.MaxStorableValue)*d.Factor {
-			d.IntEncodedValueImpl.UncheckedSet(reverse, edgeID, eia, d.MaxStorableValue-1)
+			d.UncheckedSet(reverse, edgeID, eia, d.MaxStorableValue-1)
 			return
 		}
 	} else if math.IsInf(value, 0) {
@@ -72,11 +72,11 @@ func (d *DecimalEncodedValueImpl) SetDecimal(reverse bool, edgeID int, eia EdgeI
 			d.GetName(), value, d.MinStorableValue, d.Factor))
 	}
 
-	d.IntEncodedValueImpl.UncheckedSet(reverse, edgeID, eia, int32(math.Round(value)))
+	d.UncheckedSet(reverse, edgeID, eia, int32(math.Round(value)))
 }
 
 func (d *DecimalEncodedValueImpl) GetDecimal(reverse bool, edgeID int, eia EdgeIntAccess) float64 {
-	v := d.IntEncodedValueImpl.GetInt(reverse, edgeID, eia)
+	v := d.GetInt(reverse, edgeID, eia)
 	if d.UseMaximumAsInfinity && v == d.MaxStorableValue {
 		return math.Inf(1)
 	}
@@ -113,7 +113,7 @@ func (d *DecimalEncodedValueImpl) GetMinStorableDecimal() float64 {
 }
 
 func (d *DecimalEncodedValueImpl) GetMaxOrMaxStorableDecimal() float64 {
-	v := d.IntEncodedValueImpl.GetMaxOrMaxStorableInt()
+	v := d.GetMaxOrMaxStorableInt()
 	if d.UseMaximumAsInfinity && v == d.MaxStorableValue {
 		return math.Inf(1)
 	}

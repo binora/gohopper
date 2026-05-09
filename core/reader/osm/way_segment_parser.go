@@ -379,7 +379,6 @@ func (h *pass2Handler) splitSegmentAtSplitNodes(parentSegment []SegmentNode, way
 			h.handleSegment(segment, way)
 			// handleSegment may promote pillar to tower; read back the updated node.
 			barrierFrom = segment[len(segment)-1]
-			segment = nil
 		}
 
 		// Emit the zero-length barrier edge.

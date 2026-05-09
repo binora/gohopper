@@ -21,11 +21,11 @@ func NewEnumEncodedValueDir[E ~int](name string, values []E, storeTwoDirections 
 }
 
 func (e *EnumEncodedValue[E]) SetEnum(reverse bool, edgeID int, eia EdgeIntAccess, value E) {
-	e.IntEncodedValueImpl.SetInt(reverse, edgeID, eia, int32(value))
+	e.SetInt(reverse, edgeID, eia, int32(value))
 }
 
 func (e *EnumEncodedValue[E]) GetEnum(reverse bool, edgeID int, eia EdgeIntAccess) E {
-	return e.Values[e.IntEncodedValueImpl.GetInt(reverse, edgeID, eia)]
+	return e.Values[e.GetInt(reverse, edgeID, eia)]
 }
 
 func (e *EnumEncodedValue[E]) GetValues() []E {

@@ -34,10 +34,6 @@ func newRoutingCHEdgeIteratorImpl(chStore *CHStorage, bg *BaseGraph, w CHWeighti
 	return it
 }
 
-func (it *routingCHEdgeIteratorImpl) edgeState() util.EdgeIteratorState {
-	return it.baseIterator
-}
-
 func (it *routingCHEdgeIteratorImpl) getOrigEdgeWeight(reverse bool) float64 {
 	return it.weighting.CalcEdgeWeight(it.baseIterator, reverse)
 }

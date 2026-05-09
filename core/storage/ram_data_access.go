@@ -160,7 +160,7 @@ func (r *RAMDataAccess) LoadExisting() bool {
 	if err != nil {
 		panic(fmt.Sprintf("problem while loading %s: %v", path, err))
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	byteCount, err := r.readHeader(f)
 	if err != nil {
@@ -204,7 +204,7 @@ func (r *RAMDataAccess) Flush() {
 	if err != nil {
 		panic(fmt.Sprintf("couldn't store bytes to %s: %v", r.fullName(), err))
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := r.writeHeader(f, r.Capacity(), r.segmentSizeInBytes); err != nil {
 		panic(fmt.Sprintf("couldn't store bytes to %s: %v", r.fullName(), err))

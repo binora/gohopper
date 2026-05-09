@@ -30,9 +30,9 @@ type BaseGraphNodesAndEdges struct {
 
 	// Edge field offsets
 	eNodeA, eNodeB, eLinkA, eLinkB, eDist, eKV, eFlags, eGeo int
-	bytesForFlags                                              int
-	edgeEntryBytes                                             int
-	edgeCount                                                  int
+	bytesForFlags                                            int
+	edgeEntryBytes                                           int
+	edgeCount                                                int
 
 	withTurnCosts bool
 	withElevation bool
@@ -145,15 +145,15 @@ func (s *BaseGraphNodesAndEdges) Close() {
 	s.nodes.Close()
 }
 
-func (s *BaseGraphNodesAndEdges) GetNodes() int          { return s.nodeCount }
-func (s *BaseGraphNodesAndEdges) GetEdges() int          { return s.edgeCount }
-func (s *BaseGraphNodesAndEdges) WithElevation() bool    { return s.withElevation }
-func (s *BaseGraphNodesAndEdges) WithTurnCosts() bool    { return s.withTurnCosts }
-func (s *BaseGraphNodesAndEdges) GetBounds() util.BBox   { return s.Bounds }
-func (s *BaseGraphNodesAndEdges) IsFrozen() bool         { return s.frozen }
-func (s *BaseGraphNodesAndEdges) SetFrozen(f bool)       { s.frozen = f }
-func (s *BaseGraphNodesAndEdges) IsClosed() bool         { return s.nodes.IsClosed() }
-func (s *BaseGraphNodesAndEdges) GetBytesForFlags() int  { return s.bytesForFlags }
+func (s *BaseGraphNodesAndEdges) GetNodes() int         { return s.nodeCount }
+func (s *BaseGraphNodesAndEdges) GetEdges() int         { return s.edgeCount }
+func (s *BaseGraphNodesAndEdges) WithElevation() bool   { return s.withElevation }
+func (s *BaseGraphNodesAndEdges) WithTurnCosts() bool   { return s.withTurnCosts }
+func (s *BaseGraphNodesAndEdges) GetBounds() util.BBox  { return s.Bounds }
+func (s *BaseGraphNodesAndEdges) IsFrozen() bool        { return s.frozen }
+func (s *BaseGraphNodesAndEdges) SetFrozen(f bool)      { s.frozen = f }
+func (s *BaseGraphNodesAndEdges) IsClosed() bool        { return s.nodes.IsClosed() }
+func (s *BaseGraphNodesAndEdges) GetBytesForFlags() int { return s.bytesForFlags }
 
 // EnsureNodeCapacity grows node storage if needed, initializing new nodes.
 func (s *BaseGraphNodesAndEdges) EnsureNodeCapacity(node int) {
@@ -359,12 +359,12 @@ func (s *BaseGraphNodesAndEdges) getFlagInt(edgePtr int64, byteOff int) int32 {
 	}
 	pos := edgePtr + int64(byteOff) + int64(s.eFlags)
 	remaining := s.bytesForFlags - byteOff
-	switch {
-	case remaining == 3:
-		return (int32(s.edges.GetShort(pos)) << 8) & 0x00FF_FFFF | int32(s.edges.GetByte(pos+2))&0xFF
-	case remaining == 2:
+	switch remaining {
+	case 3:
+		return (int32(s.edges.GetShort(pos))<<8)&0x00FF_FFFF | int32(s.edges.GetByte(pos+2))&0xFF
+	case 2:
 		return int32(s.edges.GetShort(pos)) & 0xFFFF
-	case remaining == 1:
+	case 1:
 		return int32(s.edges.GetByte(pos)) & 0xFF
 	default:
 		return s.edges.GetInt(pos)
@@ -377,13 +377,13 @@ func (s *BaseGraphNodesAndEdges) setFlagInt(edgePtr int64, byteOff int, value in
 	}
 	pos := edgePtr + int64(byteOff) + int64(s.eFlags)
 	remaining := s.bytesForFlags - byteOff
-	switch {
-	case remaining == 3:
+	switch remaining {
+	case 3:
 		s.edges.SetShort(pos, int16(value>>8))
 		s.edges.SetByte(pos+2, byte(value))
-	case remaining == 2:
+	case 2:
 		s.edges.SetShort(pos, int16(value))
-	case remaining == 1:
+	case 1:
 		s.edges.SetByte(pos, byte(value))
 	default:
 		s.edges.SetInt(pos, value)

@@ -16,19 +16,19 @@ type TurnCostFunction func(inEdge, viaNode, outEdge int) float64
 // CHPreparationGraph is an adjacency-list graph optimized for CH contraction.
 // Edges that are no longer needed (adjacent to contracted nodes) can be removed via Disconnect.
 type CHPreparationGraph struct {
-	nodes     int
-	edges     int // number of original (non-shortcut) edges
-	edgeBased bool
+	nodes      int
+	edges      int // number of original (non-shortcut) edges
+	edgeBased  bool
 	turnCostFn TurnCostFunction
 
-	prepareEdgesOut []prepareEdge
-	prepareEdgesIn  []prepareEdge
+	prepareEdgesOut         []prepareEdge
+	prepareEdgesIn          []prepareEdge
 	shortcutsByPrepareEdges []int
-	degrees     []int
-	origGraph   *origGraph
-	origBuilder *origGraphBuilder
-	nextShortcutID int
-	ready       bool
+	degrees                 []int
+	origGraph               *origGraph
+	origBuilder             *origGraphBuilder
+	nextShortcutID          int
+	ready                   bool
 }
 
 func NewCHPreparationGraphNodeBased(nodes, edges int) *CHPreparationGraph {
@@ -76,8 +76,8 @@ func BuildTurnCostFunctionFromWeighting(w weighting.Weighting) TurnCostFunction 
 	return w.CalcTurnWeight
 }
 
-func (g *CHPreparationGraph) GetNodes() int         { return g.nodes }
-func (g *CHPreparationGraph) GetOriginalEdges() int { return g.edges }
+func (g *CHPreparationGraph) GetNodes() int          { return g.nodes }
+func (g *CHPreparationGraph) GetOriginalEdges() int  { return g.edges }
 func (g *CHPreparationGraph) GetDegree(node int) int { return g.degrees[node] }
 
 func (g *CHPreparationGraph) AddEdge(from, to, edge int, weightFwd, weightBwd float64) {
@@ -358,41 +358,45 @@ func (e *prepareBaseEdge) setWeight(float64)     { panic("not supported on base 
 func (e *prepareBaseEdge) setOrigEdgeCount(int)  { panic("not supported on base edge") }
 
 func (e *prepareBaseEdge) getNextOut(base int) prepareEdge {
-	if base == e.nodeA {
+	switch base {
+	case e.nodeA:
 		return e.nextOutA
-	}
-	if base == e.nodeB {
+	case e.nodeB:
 		return e.nextOutB
+	default:
+		panic(fmt.Sprintf("base %d not adjacent to edge %d-%d", base, e.nodeA, e.nodeB))
 	}
-	panic(fmt.Sprintf("base %d not adjacent to edge %d-%d", base, e.nodeA, e.nodeB))
 }
 
 func (e *prepareBaseEdge) setNextOut(base int, pe prepareEdge) {
-	if base == e.nodeA {
+	switch base {
+	case e.nodeA:
 		e.nextOutA = pe
-	} else if base == e.nodeB {
+	case e.nodeB:
 		e.nextOutB = pe
-	} else {
+	default:
 		panic(fmt.Sprintf("base %d not adjacent", base))
 	}
 }
 
 func (e *prepareBaseEdge) getNextIn(base int) prepareEdge {
-	if base == e.nodeA {
+	switch base {
+	case e.nodeA:
 		return e.nextInA
-	}
-	if base == e.nodeB {
+	case e.nodeB:
 		return e.nextInB
+	default:
+		panic(fmt.Sprintf("base %d not adjacent", base))
 	}
-	panic(fmt.Sprintf("base %d not adjacent", base))
 }
 
 func (e *prepareBaseEdge) setNextIn(base int, pe prepareEdge) {
-	if base == e.nodeA {
+	switch base {
+	case e.nodeA:
 		e.nextInA = pe
-	} else if base == e.nodeB {
+	case e.nodeB:
 		e.nextInB = pe
-	} else {
+	default:
 		panic(fmt.Sprintf("base %d not adjacent", base))
 	}
 }
@@ -434,17 +438,17 @@ func (s *prepareShortcut) getOrigEdgeKeyFirstBA() int { panic("not supported for
 func (s *prepareShortcut) getOrigEdgeKeyLastAB() int  { panic("not supported for node-based shortcut") }
 func (s *prepareShortcut) getOrigEdgeKeyLastBA() int  { panic("not supported for node-based shortcut") }
 
-func (s *prepareShortcut) getSkipped1() int      { return s.skipped1 }
-func (s *prepareShortcut) getSkipped2() int      { return s.skipped2 }
-func (s *prepareShortcut) getOrigEdgeCount() int { return s.origEdgeCount }
-func (s *prepareShortcut) setSkipped1(v int)     { s.skipped1 = v }
-func (s *prepareShortcut) setSkipped2(v int)     { s.skipped2 = v }
-func (s *prepareShortcut) setWeight(v float64)   { s.weight = v }
+func (s *prepareShortcut) getSkipped1() int       { return s.skipped1 }
+func (s *prepareShortcut) getSkipped2() int       { return s.skipped2 }
+func (s *prepareShortcut) getOrigEdgeCount() int  { return s.origEdgeCount }
+func (s *prepareShortcut) setSkipped1(v int)      { s.skipped1 = v }
+func (s *prepareShortcut) setSkipped2(v int)      { s.skipped2 = v }
+func (s *prepareShortcut) setWeight(v float64)    { s.weight = v }
 func (s *prepareShortcut) setOrigEdgeCount(v int) { s.origEdgeCount = v }
 
-func (s *prepareShortcut) getNextOut(_ int) prepareEdge    { return s.nextOut }
+func (s *prepareShortcut) getNextOut(_ int) prepareEdge     { return s.nextOut }
 func (s *prepareShortcut) setNextOut(_ int, pe prepareEdge) { s.nextOut = pe }
-func (s *prepareShortcut) getNextIn(_ int) prepareEdge     { return s.nextIn }
+func (s *prepareShortcut) getNextIn(_ int) prepareEdge      { return s.nextIn }
 func (s *prepareShortcut) setNextIn(_ int, pe prepareEdge)  { s.nextIn = pe }
 
 func (s *prepareShortcut) String() string {
@@ -554,7 +558,7 @@ func (ex *prepareGraphEdgeExplorerImpl) SetSkippedEdges(s1, s2 int) {
 	ex.currEdge.setSkipped2(s2)
 }
 
-func (ex *prepareGraphEdgeExplorerImpl) SetWeight(w float64)      { ex.currEdge.setWeight(w) }
+func (ex *prepareGraphEdgeExplorerImpl) SetWeight(w float64)    { ex.currEdge.setWeight(w) }
 func (ex *prepareGraphEdgeExplorerImpl) SetOrigEdgeCount(c int) { ex.currEdge.setOrigEdgeCount(c) }
 
 func (ex *prepareGraphEdgeExplorerImpl) String() string {
@@ -576,7 +580,7 @@ type origGraphEntry struct {
 }
 
 type origGraph struct {
-	entries        []origGraphEntry
+	entries         []origGraphEntry
 	firstEdgeByNode []int
 }
 
@@ -589,10 +593,10 @@ func (og *origGraph) createInOrigEdgeExplorer() PrepareGraphOrigEdgeExplorer {
 }
 
 type origGraphBuilder struct {
-	fromNodes         []int
+	fromNodes          []int
 	toNodesAndFwdFlags []int
-	keysAndBwdFlags   []int
-	maxFrom           int
+	keysAndBwdFlags    []int
+	maxFrom            int
 }
 
 func newOrigGraphBuilder() *origGraphBuilder {
@@ -708,8 +712,8 @@ func (it *origEdgeIteratorImpl) hasAccess() bool {
 
 // ensure interfaces are satisfied
 var (
-	_ PrepareGraphEdgeExplorer    = (*prepareGraphEdgeExplorerImpl)(nil)
-	_ PrepareGraphEdgeIterator    = (*prepareGraphEdgeExplorerImpl)(nil)
+	_ PrepareGraphEdgeExplorer     = (*prepareGraphEdgeExplorerImpl)(nil)
+	_ PrepareGraphEdgeIterator     = (*prepareGraphEdgeExplorerImpl)(nil)
 	_ PrepareGraphOrigEdgeExplorer = (*origEdgeIteratorImpl)(nil)
 	_ PrepareGraphOrigEdgeIterator = (*origEdgeIteratorImpl)(nil)
 )

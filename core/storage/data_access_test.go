@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"gohopper/core/util"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRAMDataAccess_LoadFlush(t *testing.T) {
@@ -397,6 +399,6 @@ func testPadding(t *testing.T, create func(string, int) DataAccess) {
 func testDir(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "da")
-	os.MkdirAll(dir, 0o755)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 	return dir
 }

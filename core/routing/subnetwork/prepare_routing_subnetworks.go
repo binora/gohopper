@@ -75,7 +75,7 @@ func (p *PrepareRoutingSubnetworks) DoWork() int {
 func (p *PrepareRoutingSubnetworks) setSubnetworks(w weighting.Weighting, subnetworkFlags []bool) int {
 	ccs := FindComponents(p.graph,
 		func(prev int, edge util.EdgeIteratorState) bool {
-			return math.IsInf(routing.CalcWeightWithTurnWeight(w, edge, false, prev), 0) == false
+			return !math.IsInf(routing.CalcWeightWithTurnWeight(w, edge, false, prev), 0)
 		},
 		false,
 	)

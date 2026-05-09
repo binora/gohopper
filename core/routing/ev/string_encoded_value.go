@@ -51,7 +51,7 @@ func NewStringEncodedValueWithValues(name string, numBits int, values []string, 
 
 func (s *StringEncodedValue) SetString(reverse bool, edgeID int, eia EdgeIntAccess, value string) {
 	if value == "" {
-		s.IntEncodedValueImpl.SetInt(reverse, edgeID, eia, 0)
+		s.SetInt(reverse, edgeID, eia, 0)
 		return
 	}
 	idx, ok := s.IndexMap[value]
@@ -63,11 +63,11 @@ func (s *StringEncodedValue) SetString(reverse bool, edgeID int, eia EdgeIntAcce
 		idx = len(s.Values)
 		s.IndexMap[value] = idx
 	}
-	s.IntEncodedValueImpl.SetInt(reverse, edgeID, eia, int32(idx))
+	s.SetInt(reverse, edgeID, eia, int32(idx))
 }
 
 func (s *StringEncodedValue) GetString(reverse bool, edgeID int, eia EdgeIntAccess) string {
-	v := s.IntEncodedValueImpl.GetInt(reverse, edgeID, eia)
+	v := s.GetInt(reverse, edgeID, eia)
 	if v == 0 {
 		return ""
 	}

@@ -123,7 +123,7 @@ func (d *GHDirectory) Remove(name string) {
 
 	da.Close()
 	if da.Type().IsStoring() {
-		os.Remove(d.location + name)
+		_ = os.Remove(d.location + name)
 	}
 }
 
@@ -146,7 +146,7 @@ func (d *GHDirectory) Clear() {
 	for name, da := range d.das {
 		da.Close()
 		if da.Type().IsStoring() {
-			os.Remove(d.location + name)
+			_ = os.Remove(d.location + name)
 		}
 	}
 	d.das = make(map[string]DataAccess)
@@ -163,7 +163,9 @@ func (d *GHDirectory) Close() {
 
 func (d *GHDirectory) Init() Directory {
 	if d.typeFallback.IsStoring() {
-		os.MkdirAll(d.location, 0o755)
+		if err := os.MkdirAll(d.location, 0o755); err != nil {
+			panic(fmt.Sprintf("couldn't create directory %s: %v", d.location, err))
+		}
 	}
 	return d
 }

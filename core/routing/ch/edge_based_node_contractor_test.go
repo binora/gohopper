@@ -195,6 +195,34 @@ func ebcCheckShortcutsSet(t *testing.T, store *storage.CHStorage, expected map[e
 	assert.Equal(t, expected, givenSet)
 }
 
+func ebcCheckShortcutsNormalized(t *testing.T, store *storage.CHStorage, normalize func(ebcTestShortcut) ebcTestShortcut, expected ...ebcTestShortcut) {
+	t.Helper()
+	expectedSet := make(map[ebcTestShortcut]bool)
+	for _, e := range expected {
+		expectedSet[e] = true
+	}
+	if len(expected) != len(expectedSet) {
+		t.Fatal("was given duplicate shortcuts")
+	}
+	givenSet := make(map[ebcTestShortcut]bool)
+	for i := 0; i < store.GetShortcuts(); i++ {
+		ptr := store.ToShortcutPointer(i)
+		given := ebcTestShortcut{
+			baseNode:     store.GetNodeA(ptr),
+			adjNode:      store.GetNodeB(ptr),
+			origKeyFirst: store.GetOrigEdgeKeyFirst(ptr),
+			origKeyLast:  store.GetOrigEdgeKeyLast(ptr),
+			skipEdge1:    store.GetSkippedEdge1(ptr),
+			skipEdge2:    store.GetSkippedEdge2(ptr),
+			weight:       store.GetWeight(ptr),
+			fwd:          store.GetFwdAccess(ptr),
+			bwd:          store.GetBwdAccess(ptr),
+		}
+		givenSet[normalize(given)] = true
+	}
+	assert.Equal(t, expectedSet, givenSet)
+}
+
 func ebcCheckNumShortcuts(t *testing.T, store *storage.CHStorage, expected int) {
 	t.Helper()
 	assert.Equal(t, expected, store.GetShortcuts())
@@ -678,26 +706,27 @@ func TestEdgeBasedContractNode_multiple_loops_rightLeftLoopIsBest(t *testing.T) 
 	)
 }
 
-//    1 4 2
-//    |\|/|
-//    0-6-3
-//     /|\
+//	1 4 2
+//	|\|/|
+//	0-6-3
+//	 /|\
+//
 // 9--7 5 8--10
 type graphWithTwoLoops struct {
-	f         *ebcTestFixture
-	numEdges  int
-	e0to1     util.EdgeIteratorState
-	e1to6     util.EdgeIteratorState
-	e6to0     util.EdgeIteratorState
-	e2to3     util.EdgeIteratorState
-	e3to6     util.EdgeIteratorState
-	e6to2     util.EdgeIteratorState
-	e7to6     util.EdgeIteratorState
-	e6to8     util.EdgeIteratorState
-	e9to7     util.EdgeIteratorState
-	e8to10    util.EdgeIteratorState
-	e4to6     util.EdgeIteratorState
-	e5to6     util.EdgeIteratorState
+	f        *ebcTestFixture
+	numEdges int
+	e0to1    util.EdgeIteratorState
+	e1to6    util.EdgeIteratorState
+	e6to0    util.EdgeIteratorState
+	e2to3    util.EdgeIteratorState
+	e3to6    util.EdgeIteratorState
+	e6to2    util.EdgeIteratorState
+	e7to6    util.EdgeIteratorState
+	e6to8    util.EdgeIteratorState
+	e9to7    util.EdgeIteratorState
+	e8to10   util.EdgeIteratorState
+	e4to6    util.EdgeIteratorState
+	e5to6    util.EdgeIteratorState
 }
 
 func newGraphWithTwoLoops(f *ebcTestFixture, turnCost70, turnCost72, turnCost12, turnCost18, turnCost38, turnCost78 int) *graphWithTwoLoops {
@@ -773,8 +802,9 @@ func TestEdgeBasedContractNode_detour_detourIsWorse(t *testing.T) {
 	ebcCheckShortcuts(t, f.chStore)
 }
 
-//      0
-//     / \
+//	 0
+//	/ \
+//
 // 4--1---2--3
 type graphWithDetour struct {
 	e4to1 util.EdgeIteratorState
@@ -822,7 +852,9 @@ func TestEdgeBasedContractNode_detour_multipleInOut_restrictedIn(t *testing.T) {
 }
 
 // 5   3   7
-//  \ / \ /
+//
+//	\ / \ /
+//
 // 2-1-0-4-6
 type graphWithDetourMultipleInOutEdges struct {
 	e5to1 util.EdgeIteratorState
@@ -876,11 +908,13 @@ func TestEdgeBasedContractNode_loopAvoidance_loopAvoidable(t *testing.T) {
 	)
 }
 
-//   0 - 1
-//    \ /
+//	0 - 1
+//	 \ /
+//
 // 3 - 2 - 4
-//     |
-//     5
+//
+//	|
+//	5
 type graphWithLoop struct {
 	e0to1 util.EdgeIteratorState
 	e1to2 util.EdgeIteratorState
@@ -1176,7 +1210,18 @@ func TestEdgeBasedNodeContraction_duplicateEdge_severalLoops(t *testing.T) {
 	f.setMaxLevelOnAllNodes()
 	f.contractNodes(4, 5, 1, 3, 2)
 	ebcCheckNumShortcuts(t, f.chStore, 11)
-	ebcCheckShortcuts(t, f.chStore,
+	normalizeSkippedEdgeChoice := func(sc ebcTestShortcut) ebcTestShortcut {
+		if sc.baseNode == 2 && sc.adjNode == 2 && sc.origKeyFirst == 6 && sc.origKeyLast == 3 &&
+			sc.skipEdge1 == 3 && sc.skipEdge2 == 7 && sc.weight == 134 && sc.fwd && !sc.bwd {
+			sc.skipEdge2 = 6
+		}
+		if sc.baseNode == 3 && sc.adjNode == 2 && sc.origKeyFirst == 4 && sc.origKeyLast == 9 &&
+			sc.skipEdge1 == 2 && sc.skipEdge2 == 6 && sc.weight == 106 && !sc.fwd && sc.bwd {
+			sc.skipEdge2 = 7
+		}
+		return sc
+	}
+	ebcCheckShortcutsNormalized(t, f.chStore, normalizeSkippedEdgeChoice,
 		// from node 4 contraction
 		createShortcutRawDir(5, 3, 11, 9, 5, 4, 66, true, false),
 		createShortcutRawDir(5, 3, 8, 10, 4, 5, 66, false, true),

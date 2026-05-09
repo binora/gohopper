@@ -339,20 +339,20 @@ func buildGPX(request webapi.GHRequest, response webapi.GHResponse) string {
 	if request.Options.WithTrack {
 		b.WriteString("<trk><name>" + xmlEscape(name) + "</name><trkseg>")
 		for _, p := range points {
-			b.WriteString(fmt.Sprintf("<trkpt lat=\"%.6f\" lon=\"%.6f\"><time>%s</time></trkpt>", p.Lat, p.Lon, t.Format(time.RFC3339)))
+			fmt.Fprintf(&b, "<trkpt lat=\"%.6f\" lon=\"%.6f\"><time>%s</time></trkpt>", p.Lat, p.Lon, t.Format(time.RFC3339))
 		}
 		b.WriteString("</trkseg></trk>")
 	}
 	if request.Options.WithRoute {
 		b.WriteString("<rte>")
 		for _, p := range points {
-			b.WriteString(fmt.Sprintf("<rtept lat=\"%.6f\" lon=\"%.6f\"></rtept>", p.Lat, p.Lon))
+			fmt.Fprintf(&b, "<rtept lat=\"%.6f\" lon=\"%.6f\"></rtept>", p.Lat, p.Lon)
 		}
 		b.WriteString("</rte>")
 	}
 	if request.Options.WithWayPoints {
 		for _, p := range points {
-			b.WriteString(fmt.Sprintf("<wpt lat=\"%.6f\" lon=\"%.6f\"></wpt>", p.Lat, p.Lon))
+			fmt.Fprintf(&b, "<wpt lat=\"%.6f\" lon=\"%.6f\"></wpt>", p.Lat, p.Lon)
 		}
 	}
 	b.WriteString("</gpx>")

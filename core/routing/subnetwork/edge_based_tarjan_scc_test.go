@@ -11,8 +11,8 @@ import (
 )
 
 type tarjanTestFixture struct {
-	speedEnc       ev.DecimalEncodedValue
-	bytesForFlags  int
+	speedEnc        ev.DecimalEncodedValue
+	bytesForFlags   int
 	fwdAccessFilter EdgeTransitionFilter
 }
 
@@ -144,8 +144,8 @@ func TestSmallGraph(t *testing.T) {
 	f := newTarjanTestFixture()
 	g := f.createGraph()
 	// 3<-0->2-1
-	g.Edge(0, 2).SetDistance(1).SetDecimalBothDir(f.speedEnc, 10, 0) // edge-keys 0,1
-	g.Edge(0, 3).SetDistance(1).SetDecimalBothDir(f.speedEnc, 10, 0) // edge-keys 2,3
+	g.Edge(0, 2).SetDistance(1).SetDecimalBothDir(f.speedEnc, 10, 0)  // edge-keys 0,1
+	g.Edge(0, 3).SetDistance(1).SetDecimalBothDir(f.speedEnc, 10, 0)  // edge-keys 2,3
 	g.Edge(2, 1).SetDistance(1).SetDecimalBothDir(f.speedEnc, 10, 10) // edge-keys 4,5
 	result := FindComponentsRecursive(g, f.fwdAccessFilter, false)
 	assert.Equal(t, 6, result.NumEdgeKeys)
@@ -213,7 +213,7 @@ func TestWithTurnRestriction(t *testing.T) {
 	// with a restricted turn: block 0→2→3 (prevEdge==1, baseNode==2, edge==2)
 	turnRestricted := func(prev int, edge util.EdgeIteratorState) bool {
 		return f.fwdAccessFilter(prev, edge) &&
-			!(prev == 1 && edge.GetBaseNode() == 2 && edge.GetEdge() == 2)
+			(prev != 1 || edge.GetBaseNode() != 2 || edge.GetEdge() != 2)
 	}
 	result = FindComponentsRecursive(g, turnRestricted, false)
 	assert.Equal(t, 10, result.NumComponents)

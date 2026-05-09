@@ -54,7 +54,9 @@ func (sp *StorableProperties) Flush() {
 	}
 	sp.da.Flush()
 	if sp.dir.DefaultType().IsStoring() {
-		os.WriteFile(sp.dir.Location()+"properties.txt", raw, 0o644)
+		if err := os.WriteFile(sp.dir.Location()+"properties.txt", raw, 0o644); err != nil {
+			panic(fmt.Sprintf("couldn't write properties: %v", err))
+		}
 	}
 }
 

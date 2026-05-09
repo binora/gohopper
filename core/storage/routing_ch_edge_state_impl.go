@@ -39,9 +39,10 @@ func (s *routingCHEdgeIteratorStateImpl) init(edge, expectedAdjNode int) bool {
 		s.baseNode = s.store.GetNodeA(s.shortcutPointer)
 		s.adjNode = s.store.GetNodeB(s.shortcutPointer)
 
-		if expectedAdjNode == s.adjNode || expectedAdjNode == math.MinInt32 {
+		switch expectedAdjNode {
+		case s.adjNode, math.MinInt32:
 			return true
-		} else if expectedAdjNode == s.baseNode {
+		case s.baseNode:
 			s.baseNode = s.adjNode
 			s.adjNode = expectedAdjNode
 			return true

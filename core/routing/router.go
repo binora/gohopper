@@ -180,13 +180,6 @@ func (r *Router) buildResponsePath(request webapi.GHRequest, paths []*Path, snap
 		}
 		partition := &waypointPartition{intervals: wpIntervals}
 		util.SimplifyPath(allPoints, []util.Partition{partition}, rdp)
-
-		// Rebuild waypoint indices from simplified partition.
-		waypointIndices = make([]int, 0, len(wpIntervals)+1)
-		waypointIndices = append(waypointIndices, partition.intervals[0].Start)
-		for _, iv := range partition.intervals {
-			waypointIndices = append(waypointIndices, iv.End)
-		}
 	}
 
 	waypoints := make([]util.GHPoint, len(snaps))

@@ -128,9 +128,9 @@ func TestToShort(t *testing.T) {
 		t.Fatalf("expected -123, got %d", got)
 	}
 
-	BitLE.FromShort(b, int16(0xFF|0xFF), 0)
-	if got := BitLE.ToShort(b, 0); got != int16(0xFF|0xFF) {
-		t.Fatalf("expected %d, got %d", int16(0xFF|0xFF), got)
+	BitLE.FromShort(b, int16(0xFF), 0)
+	if got := BitLE.ToShort(b, 0); got != int16(0xFF) {
+		t.Fatalf("expected %d, got %d", int16(0xFF), got)
 	}
 }
 

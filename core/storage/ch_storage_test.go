@@ -26,7 +26,7 @@ func TestCHStorage_SetAndGetLevels(t *testing.T) {
 func TestCHStorage_CreateAndLoad(t *testing.T) {
 	path, err := os.MkdirTemp("", "ch_storage_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(path)
+	defer func() { require.NoError(t, os.RemoveAll(path)) }()
 
 	{
 		dir := NewGHDirectory(path, DATypeRAMIntStore)

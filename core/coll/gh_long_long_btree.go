@@ -313,18 +313,6 @@ func (e *btreeEntry) getCapacity(t *GHLongLongBTree) int64 {
 	return cap
 }
 
-func (e *btreeEntry) getEntries() int {
-	entries := 1
-	if !e.isLeaf {
-		for _, c := range e.children {
-			if c != nil {
-				entries += c.getEntries()
-			}
-		}
-	}
-	return entries
-}
-
 func (e *btreeEntry) ensureSize(size int, t *GHLongLongBTree) {
 	if size <= len(e.keys) {
 		return

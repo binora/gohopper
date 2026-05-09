@@ -282,7 +282,7 @@ func TestOSMReaderNegativeIds(t *testing.T) {
 
 	// Negative IDs should cause an error or panic
 	assert.Panics(t, func() {
-		rdr.ReadGraph("testdata/test-osm-negative-ids.xml")
+		_ = rdr.ReadGraph("testdata/test-osm-negative-ids.xml")
 	})
 }
 
