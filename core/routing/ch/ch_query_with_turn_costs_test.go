@@ -812,6 +812,135 @@ func TestCHQueryWithTurnCosts_AStarIssue2061(t *testing.T) {
 		})
 	}
 }
+
+// TestCHQueryWithTurnCosts_RouteViaVirtualNode ports Java CHTurnCostTest.testRouteViaVirtualNode (L855).
+//
+//	  3
+//	0-x-1-2
+func TestCHQueryWithTurnCosts_RouteViaVirtualNode(t *testing.T) {
+	for _, algoName := range []string{routing.AlgoAStarBi, routing.AlgoDijkstraBi} {
+		t.Run(algoName, func(t *testing.T) {
+			f := newTurnCostQueryFixture()
+			f.graph.Edge(0, 1).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 0)
+			f.graph.Edge(1, 2).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 0)
+			f.updateDistancesFor(0, 0.00, 0.00)
+			f.updateDistancesFor(1, 0.02, 0.02)
+			f.updateDistancesFor(2, 0.03, 0.03)
+			chGraph := f.freezeAndAutomaticPrepareCH()
+
+			locIdx := index.NewLocationIndexTree(f.graph, storage.NewRAMDirectory("", false))
+			locIdx.PrepareIndex()
+			snap := locIdx.FindClosest(0.01, 0.01, routingutil.AllEdges)
+			qg := querygraph.CreateFromSnaps(f.graph, []*index.Snap{snap})
+			require.Equal(t, 3, snap.GetClosestNode())
+			require.Equal(t, 0, snap.GetClosestEdge().GetEdge())
+
+			opts := webapi.NewPMap().PutObject(chRoutingAlgorithmKey, algoName)
+			algo := NewCHRoutingAlgorithmFactoryWithQueryGraph(chGraph, qg).CreateAlgo(opts)
+			path := algo.CalcPath(0, 2)
+			require.True(t, path.Found, "it should be possible to route via a virtual node, but no path found")
+			assert.Equal(t, []int{0, 3, 1, 2}, path.CalcNodes())
+			assert.InDelta(t, util.DistPlane.CalcDist(0.00, 0.00, 0.03, 0.03), path.Distance, 1e-1)
+		})
+	}
+}
+
+// TestCHQueryWithTurnCosts_RouteViaVirtualNodeWithAlternative ports Java
+// CHTurnCostTest.testRouteViaVirtualNode_withAlternative (L880).
+//
+//	  3
+//	0-x-1
+//	 \  |
+//	  \-2
+func TestCHQueryWithTurnCosts_RouteViaVirtualNodeWithAlternative(t *testing.T) {
+	for _, algoName := range []string{routing.AlgoAStarBi, routing.AlgoDijkstraBi} {
+		t.Run(algoName, func(t *testing.T) {
+			f := newTurnCostQueryFixture()
+			f.graph.Edge(0, 1).SetDistance(10).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 10)
+			f.graph.Edge(1, 2).SetDistance(10).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 10)
+			f.graph.Edge(2, 0).SetDistance(10).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 10)
+			f.updateDistancesFor(0, 0.01, 0.00)
+			f.updateDistancesFor(1, 0.01, 0.02)
+			f.updateDistancesFor(2, 0.00, 0.02)
+			chGraph := f.freezeAndAutomaticPrepareCH()
+
+			locIdx := index.NewLocationIndexTree(f.graph, storage.NewRAMDirectory("", false))
+			locIdx.PrepareIndex()
+			snap := locIdx.FindClosest(0.01, 0.01, routingutil.AllEdges)
+			qg := querygraph.CreateFromSnaps(f.graph, []*index.Snap{snap})
+			require.Equal(t, 3, snap.GetClosestNode())
+			require.Equal(t, 0, snap.GetClosestEdge().GetEdge())
+
+			opts := webapi.NewPMap().PutObject(chRoutingAlgorithmKey, algoName)
+			algo := NewCHRoutingAlgorithmFactoryWithQueryGraph(chGraph, qg).CreateAlgo(opts)
+			path := algo.CalcPath(1, 0)
+			assert.Equal(t, []int{1, 3, 0}, path.CalcNodes())
+		})
+	}
+}
+
+// TestCHQueryWithTurnCosts_FiniteUTurnCostVirtualViaNode ports Java
+// CHTurnCostTest.testFiniteUTurnCost_virtualViaNode (L907).
+//
+// If there is an extra virtual node it can be possible to do a u-turn that
+// otherwise would not be possible and so there can be a difference between CH
+// and non-CH... therefore u-turns at virtual nodes are forbidden.
+//
+//	4->3->2->1-x-0
+//	         |
+//	         5->6
+func TestCHQueryWithTurnCosts_FiniteUTurnCostVirtualViaNode(t *testing.T) {
+	for _, algoName := range []string{routing.AlgoAStarBi, routing.AlgoDijkstraBi} {
+		t.Run(algoName, func(t *testing.T) {
+			f := newTurnCostQueryFixture()
+			f.graph.Edge(4, 3).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 0)
+			f.graph.Edge(3, 2).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 0)
+			f.graph.Edge(2, 1).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 0)
+			f.graph.Edge(1, 0).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 10)
+			f.graph.Edge(1, 5).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 0)
+			f.graph.Edge(5, 6).SetDistance(0).SetDecimal(f.speedEnc, 10).SetReverseDecimal(f.speedEnc, 0)
+			f.updateDistancesFor(4, 0.1, 0.0)
+			f.updateDistancesFor(3, 0.1, 0.1)
+			f.updateDistancesFor(2, 0.1, 0.2)
+			f.updateDistancesFor(1, 0.1, 0.3)
+			f.updateDistancesFor(0, 0.1, 0.4)
+			f.updateDistancesFor(5, 0.0, 0.3)
+			f.updateDistancesFor(6, 0.0, 0.4)
+			// not allowed to turn right at node 1 -> we have to take a u-turn at node 0 (or at the virtual node...)
+			f.setRestriction(2, 1, 5)
+
+			// Java uses chConfigs[2] with u-turn cost 50; override fixture's default
+			// (math.Inf) before preparing CH so the same weighting drives both prep
+			// and the Dijkstra cross-check.
+			f.weighting = weighting.NewSpeedWeightingWithTurnCosts(f.speedEnc, f.turnCostEnc, f.graph.GetTurnCostStorage(), f.graph.GetNodeAccess(), 50)
+			chGraph := f.freezeAndPrepareCHWithOrder(0, 1, 2, 3, 4, 5, 6)
+
+			locIdx := index.NewLocationIndexTree(f.graph, storage.NewRAMDirectory("", false))
+			locIdx.PrepareIndex()
+			snap := locIdx.FindClosest(0.1, 0.35, routingutil.AllEdges)
+			chQg := querygraph.CreateFromSnaps(f.graph, []*index.Snap{snap})
+			require.Equal(t, 3, snap.GetClosestEdge().GetEdge())
+
+			opts := webapi.NewPMap().PutObject(chRoutingAlgorithmKey, algoName)
+			chAlgo := NewCHRoutingAlgorithmFactoryWithQueryGraph(chGraph, chQg).CreateAlgo(opts)
+			chPath := chAlgo.CalcPath(4, 6)
+			require.True(t, chPath.Found)
+			assert.Equal(t, []int{4, 3, 2, 1, 0, 1, 5, 6}, chPath.CalcNodes())
+
+			// Cross-check against plain edge-based Dijkstra on a fresh QueryGraph.
+			snap2 := locIdx.FindClosest(0.1, 0.35, routingutil.AllEdges)
+			qg := querygraph.CreateFromSnaps(f.graph, []*index.Snap{snap2})
+			require.Equal(t, 3, snap2.GetClosestEdge().GetEdge())
+			wrapped := weighting.NewQueryGraphWeighting(qg.GetBaseGraph(), f.weighting, qg.GetClosestEdges())
+			dijkstraPath := routing.NewDijkstra(qg, wrapped, routingutil.EdgeBased).CalcPath(4, 6)
+			assert.Equal(t, []int{4, 3, 2, 1, 7, 0, 7, 1, 5, 6}, dijkstraPath.CalcNodes())
+			assert.InDelta(t, dijkstraPath.Weight, chPath.Weight, 1e-2)
+			assert.InDelta(t, dijkstraPath.Distance, chPath.Distance, 1e-2)
+			assert.InDelta(t, float64(dijkstraPath.Time), float64(chPath.Time), 5)
+		})
+	}
+}
+
 // preparedCHTurnCostFixture mirrors the Java CHTurnCostTest setup. It drives the real
 // PrepareContractionHierarchies (rather than hand-building shortcuts) and exposes helpers
 // that match Java's prepareCH/automaticPrepareCH/checkPath/compareCHQueryWithDijkstra.

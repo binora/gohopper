@@ -51,3 +51,4 @@ web/node/
 web-bundle/node/
 
 .codex
+.claude/worktrees
