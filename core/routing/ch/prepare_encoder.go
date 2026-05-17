@@ -1,9 +1,12 @@
 package ch
 
-// PrepareEncoder contains constants for CH shortcut direction encoding.
-// Shortcuts can go in one or both directions.
+import "gohopper/core/storage"
+
+// CH shortcut direction encoding bits, mirroring Java's PrepareEncoder.
+// The values live in core/storage so core/routing/querygraph can use them
+// without creating an import cycle (ch already depends on querygraph).
 const (
-	ScFwdDir  = 0x1
-	ScBwdDir  = 0x2
-	ScDirMask = 0x3
+	ScFwdDir  = storage.ScFwdDir
+	ScBwdDir  = storage.ScBwdDir
+	ScDirMask = storage.ScDirMask
 )

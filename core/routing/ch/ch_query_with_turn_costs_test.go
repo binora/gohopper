@@ -653,16 +653,6 @@ func (f *turnCostQueryFixture) findPathUsingDijkstra(from, to int) *routing.Path
 func TestCHQueryWithTurnCosts_Issue1593Full(t *testing.T) {
 	for _, algoName := range []string{routing.AlgoAStarBi, routing.AlgoDijkstraBi} {
 		t.Run(algoName, func(t *testing.T) {
-			// Parity caveat: the Java test relies on hppc.IntObjectHashMap's
-			// seeded iteration order to place the destination virtual node on a
-			// specific (one-way-blocked) base edge. Go map iteration order does
-			// not match hppc's, and hppc's own order is non-deterministic across
-			// runs anyway (initial seed depends on global Map creation count).
-			// The "no path" assertion is therefore not portable to Go. The
-			// closely-related virtual-edge turn-cost regression is covered by
-			// TestCHQueryWithTurnCosts_Issue1593Simple, which exercises the same
-			// fix in a topology-independent way.
-			t.Skip("parity: Java test relies on hppc seeded iteration order; covered by Issue1593Simple")
 			f := newTurnCostQueryFixture()
 			na := f.graph.GetNodeAccess()
 			//      6   5
@@ -718,9 +708,15 @@ func TestCHQueryWithTurnCosts_Issue1593Full(t *testing.T) {
 
 			chGraph := f.freezeAndAutomaticPrepareCH()
 			qg := querygraph.CreateFromSnaps(f.graph, snaps)
+			// snaps[1] is point "5" (on edge0); snaps[3] is point "6" (on edge3, the
+			// one-way segment 4→1). Java hardcodes virtual node IDs 5 and 6, relying
+			// on hppc iteration order to place the destination on edge3 — gohopper
+			// uses ascending edge-id iteration order, so we look up the assigned IDs
+			// from the snaps directly instead.
+			require.Equal(t, edge3.GetEdge(), snaps[3].GetClosestEdge().GetEdge(), "snap 3 must land on edge3")
 			opts := webapi.NewPMap().PutObject(chRoutingAlgorithmKey, algoName)
 			algo := NewCHRoutingAlgorithmFactoryWithQueryGraph(chGraph, qg).CreateAlgo(opts)
-			path := algo.CalcPath(5, 6)
+			path := algo.CalcPath(snaps[1].GetClosestNode(), snaps[3].GetClosestNode())
 			// there should not be a path from 5 to 6, because first we cannot go directly 5-4-6, so we need to go left
 			// to 8. then at 2 we cannot go on edge 1 because of another turn restriction, but we can go on edge 2 so we
 			// travel via the virtual node 7 to node 1. From there we cannot go to 6 because of the one-way so we go back
@@ -997,26 +993,11 @@ func (f *preparedCHTurnCostFixture) createCHConfigs() []*CHConfig {
 	for len(configs) < 6 {
 		uTurn := float64(10 + rnd.Intn(90))
 		configs = append(configs, NewCHConfigEdgeBased(
-			"p"+fmtItoa(len(configs)),
+			"p"+strconv.Itoa(len(configs)),
 			weighting.NewSpeedWeightingWithTurnCosts(f.speedEnc, f.turnCostEnc, tcs, na, uTurn),
 		))
 	}
 	return configs
-}
-
-// fmtItoa returns the decimal string for small non-negative integers without dragging in fmt.
-func fmtItoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	pos := len(buf)
-	for i > 0 {
-		pos--
-		buf[pos] = byte('0' + i%10)
-		i /= 10
-	}
-	return string(buf[pos:])
 }
 
 func (f *preparedCHTurnCostFixture) edge(from, to int) util.EdgeIteratorState {
@@ -1055,26 +1036,6 @@ func (f *preparedCHTurnCostFixture) prepareCH(order ...int) {
 	}
 	prepare := FromGraph(f.graph, f.chConfig).
 		UseFixedNodeOrdering(NodeOrderingFromArray(order...))
-	res := prepare.DoWork()
-	f.chGraph = storage.NewRoutingCHGraph(f.graph, res.GetCHStorage(), f.chConfig.GetWeighting())
-}
-
-// automaticPrepareCH runs CH preparation with heuristic ordering. Mirrors Java CHTurnCostTest.automaticPrepareCH.
-// Java relies on these PMap keys being honoured by SetParams; the gohopper SetParams reads the same keys
-// (see PrepareContractionHierarchies.SetParams in prepare_contraction_hierarchies.go).
-// Scaffolding for follow-up worktrees that port the heuristic-ordering CHTurnCostTest cases; not used here yet.
-//
-//nolint:unused // referenced by tests ported in later worktrees
-func (f *preparedCHTurnCostFixture) automaticPrepareCH() {
-	if !f.graph.IsFrozen() {
-		f.graph.Freeze()
-	}
-	pMap := webapi.NewPMap().
-		PutObject(PeriodicUpdates, 20).
-		PutObject(LastLazyNodesUpdates, 100).
-		PutObject(NeighborUpdates, 4).
-		PutObject(LogMessages, 10)
-	prepare := FromGraph(f.graph, f.chConfig).SetParams(pMap)
 	res := prepare.DoWork()
 	f.chGraph = storage.NewRoutingCHGraph(f.graph, res.GetCHStorage(), f.chConfig.GetWeighting())
 }
@@ -1186,48 +1147,53 @@ func (f *preparedCHTurnCostFixture) setRandomCostOrRestriction(from, via, to int
 // --- Phase 1: deterministic prepared-CH cases ported from CHTurnCostTest ---
 
 // TestPreparedCH_MultipleInOutEdges_TurnReplacementDifference ports Java CHTurnCostTest L160.
-// Java uses @RepeatedTest(100) with System.nanoTime() seed; we use a fixed seed so failures
-// are reproducible. The test exercises a graph with multiple in/out edges around node 6 where
-// shortcut creation depends on the random turn restrictions placed around nodes 5 and 7.
+// Java uses @RepeatedTest(100) with System.nanoTime() seed; we use 100 deterministic
+// seeded subtests so failures are reproducible. The test exercises a graph with multiple
+// in/out edges around node 6 where shortcut creation depends on the random turn
+// restrictions placed around nodes 5 and 7.
 func TestPreparedCH_MultipleInOutEdges_TurnReplacementDifference(t *testing.T) {
-	f := newPreparedCHTurnCostFixture()
-	//   0   3 - 4   8
-	//    \ /     \ /
-	// 1 - 5 - 6 - 7 - 9
-	//    /         \
-	//   2           10
-	f.graph.Edge(0, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(1, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(2, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(5, 3).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(3, 4).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(4, 7).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(5, 6).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(6, 7).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(7, 8).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(7, 9).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
-	f.graph.Edge(7, 10).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+	for i := range 100 {
+		t.Run("seed="+strconv.Itoa(i), func(t *testing.T) {
+			f := newPreparedCHTurnCostFixture()
+			//   0   3 - 4   8
+			//    \ /     \ /
+			// 1 - 5 - 6 - 7 - 9
+			//    /         \
+			//   2           10
+			f.graph.Edge(0, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(1, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(2, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(5, 3).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(3, 4).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(4, 7).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(5, 6).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(6, 7).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(7, 8).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(7, 9).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(7, 10).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
 
-	rnd := rand.New(rand.NewSource(1))
-	f.setRandomCost(2, 5, 3, rnd)
-	f.setRandomCost(2, 5, 6, rnd)
-	f.setRandomCost(4, 7, 10, rnd)
-	f.setRandomCost(6, 7, 10, rnd)
-	f.setRandomCostOrRestriction(0, 5, 3, rnd)
-	f.setRandomCostOrRestriction(1, 5, 3, rnd)
-	f.setRandomCostOrRestriction(0, 5, 6, rnd)
-	f.setRandomCostOrRestriction(1, 5, 6, rnd)
-	f.setRandomCostOrRestriction(4, 7, 8, rnd)
-	f.setRandomCostOrRestriction(4, 7, 9, rnd)
-	f.setRandomCostOrRestriction(6, 7, 8, rnd)
-	f.setRandomCostOrRestriction(6, 7, 9, rnd)
+			rnd := rand.New(rand.NewSource(int64(i)))
+			f.setRandomCost(2, 5, 3, rnd)
+			f.setRandomCost(2, 5, 6, rnd)
+			f.setRandomCost(4, 7, 10, rnd)
+			f.setRandomCost(6, 7, 10, rnd)
+			f.setRandomCostOrRestriction(0, 5, 3, rnd)
+			f.setRandomCostOrRestriction(1, 5, 3, rnd)
+			f.setRandomCostOrRestriction(0, 5, 6, rnd)
+			f.setRandomCostOrRestriction(1, 5, 6, rnd)
+			f.setRandomCostOrRestriction(4, 7, 8, rnd)
+			f.setRandomCostOrRestriction(4, 7, 9, rnd)
+			f.setRandomCostOrRestriction(6, 7, 8, rnd)
+			f.setRandomCostOrRestriction(6, 7, 9, rnd)
 
-	f.prepareCH(6, 0, 1, 2, 8, 9, 10, 5, 3, 4, 7)
-	f.checkStrict = false
-	f.compareCHQueryWithDijkstra(t, 2, 10)
-	f.compareCHQueryWithDijkstra(t, 1, 10)
-	f.compareCHQueryWithDijkstra(t, 2, 9)
-	f.compareCHQueryWithDijkstra(t, 1, 9)
+			f.prepareCH(6, 0, 1, 2, 8, 9, 10, 5, 3, 4, 7)
+			f.checkStrict = false
+			f.compareCHQueryWithDijkstra(t, 2, 10)
+			f.compareCHQueryWithDijkstra(t, 1, 10)
+			f.compareCHQueryWithDijkstra(t, 2, 9)
+			f.compareCHQueryWithDijkstra(t, 1, 9)
+		})
+	}
 }
 
 // TestPreparedCH_MultipleInOutEdges_TurnReplacementDifference_Bug1 ports Java CHTurnCostTest L210.
@@ -1478,21 +1444,9 @@ func TestPreparedCH_CalcTurnCostTime(t *testing.T) {
 // --- Phase 2: random-contraction-order cases ported from CHTurnCostTest ---
 
 // shuffleIota returns a permutation of [0, n) seeded deterministically.
-// Mirrors Java's ArrayUtil.shuffle(ArrayUtil.iota(n), rnd): for x1 in [0, n/2),
-// swap with x2 = rnd.nextInt(n/2) + n/2. We use Go's math/rand on the supplied
-// seed so failures are reproducible (Java's `new Random()` uses System.nanoTime()).
+// Wrapper around shuffleIotaRnd for tests that supply a seed rather than rnd.
 func shuffleIota(n int, seed int64) []int {
-	out := make([]int, n)
-	for i := range out {
-		out[i] = i
-	}
-	rnd := rand.New(rand.NewSource(seed))
-	half := n / 2
-	for x1 := 0; x1 < half; x1++ {
-		x2 := rnd.Intn(half) + half
-		out[x1], out[x2] = out[x2], out[x1]
-	}
-	return out
+	return shuffleIotaRnd(n, rand.New(rand.NewSource(seed)))
 }
 
 // runRandomContractionOrderTest expands Java's @RepeatedTest(10) into 10 seeded subtests.
@@ -1502,7 +1456,7 @@ func runRandomContractionOrderTest(t *testing.T, build func(*preparedCHTurnCostF
 	t.Helper()
 	for i := 0; i < 10; i++ {
 		seed := int64(i)
-		t.Run("seed="+fmtItoa(int(seed)), func(t *testing.T) {
+		t.Run("seed="+strconv.Itoa(int(seed)), func(t *testing.T) {
 			f := newPreparedCHTurnCostFixture()
 			build(f)
 			order := shuffleIota(f.graph.GetNodes(), seed)
@@ -1532,7 +1486,7 @@ func TestPreparedCH_RandomContractionOrder_Linear(t *testing.T) {
 func TestPreparedCH_RandomContractionOrder_DuplicateEdges(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		seed := int64(i)
-		t.Run("seed="+fmtItoa(int(seed)), func(t *testing.T) {
+		t.Run("seed="+strconv.Itoa(int(seed)), func(t *testing.T) {
 			f := newPreparedCHTurnCostFixture()
 			//  /\    /<-3
 			// 0  1--2
@@ -1553,7 +1507,7 @@ func TestPreparedCH_RandomContractionOrder_DuplicateEdges(t *testing.T) {
 func TestPreparedCH_RandomContractionOrder_DoubleDuplicateEdges(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		seed := int64(i)
-		t.Run("seed="+fmtItoa(int(seed)), func(t *testing.T) {
+		t.Run("seed="+strconv.Itoa(int(seed)), func(t *testing.T) {
 			f := newPreparedCHTurnCostFixture()
 			//  /\ /\
 			// 0  1  2--3
@@ -1853,15 +1807,22 @@ func chStressBuildConfigs(speedEnc, turnCostEnc ev.DecimalEncodedValue, g *stora
 	return configs
 }
 
-// shuffleIotaRnd returns a randomized permutation of [0, n) using the supplied
-// *rand.Rand (Fisher-Yates). Distinct from shuffleIota(int, int64) above, which
-// implements the Java half-swap variant used by 9x7.3.
+// shuffleIotaRnd returns a permutation of [0, n) produced by Java's
+// ArrayUtil.shuffle (ArrayUtil.java:116-125): for x1 in [0, n/2), swap with
+// x2 = rnd.nextInt(n/2) + n/2. This is NOT Fisher-Yates — it only touches
+// n/2 indices, so the distribution is not uniform. We match Java's algorithm
+// exactly so tests that depend on the resulting orderings behave the same
+// (modulo Java/Go PRNG differences for a given seed).
 func shuffleIotaRnd(n int, rnd *rand.Rand) []int {
 	out := make([]int, n)
 	for i := range out {
 		out[i] = i
 	}
-	rnd.Shuffle(n, func(i, j int) { out[i], out[j] = out[j], out[i] })
+	half := n / 2
+	for x1 := 0; x1 < half; x1++ {
+		x2 := rnd.Intn(half) + half
+		out[x1], out[x2] = out[x2], out[x1]
+	}
 	return out
 }
 

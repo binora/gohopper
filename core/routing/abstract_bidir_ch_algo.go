@@ -65,6 +65,10 @@ type AbstractBidirCHAlgo struct {
 	CreateCHEntryFn       func(edge, adjNode, incEdge int, weight float64, parent *SPTEntry, reverse bool) *SPTEntry
 	FromEntryCanBeSkipped func() bool
 	ToEntryCanBeSkipped   func() bool
+	// FinishedFn lets subclasses override the bidirectional termination
+	// condition (Java pattern: AlternativeRouteCH overrides finished() to
+	// extend the search past the first optimum). When nil the default is used.
+	FinishedFn func() bool
 }
 
 func NewAbstractBidirCHAlgo(graph storage.RoutingCHGraph, tMode routingutil.TraversalMode) AbstractBidirCHAlgo {
@@ -224,6 +228,9 @@ func (a *AbstractBidirCHAlgo) runAlgo() {
 }
 
 func (a *AbstractBidirCHAlgo) finished() bool {
+	if a.FinishedFn != nil {
+		return a.FinishedFn()
+	}
 	return a.finishedFrom && a.finishedTo ||
 		a.currFrom.Weight >= a.BestWeight && a.currTo.Weight >= a.BestWeight
 }

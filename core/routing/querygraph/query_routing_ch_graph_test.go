@@ -15,13 +15,6 @@ import (
 	"gohopper/core/util"
 )
 
-// Shortcut direction flags (local copies to avoid import cycle with
-// gohopper/core/routing/ch which transitively depends on this package).
-const (
-	testScFwdDir  = 0x1
-	testScDirMask = 0x3
-)
-
 type queryRoutingCHGraphFixture struct {
 	speedEnc    ev.DecimalEncodedValue
 	turnCostEnc ev.DecimalEncodedValue
@@ -222,7 +215,7 @@ func TestQueryRoutingCHGraph_WithShortcuts(t *testing.T) {
 
 	chGraph, chBuilder := f.edgeBasedCHGraph()
 	chBuilder.SetIdentityLevels()
-	chBuilder.AddShortcutEdgeBased(0, 2, testScFwdDir, 20, 0, 1, 0, 2)
+	chBuilder.AddShortcutEdgeBased(0, 2, storage.ScFwdDir, 20, 0, 1, 0, 2)
 
 	qg := CreateFromSnaps(f.graph, nil)
 	qch := NewQueryRoutingCHGraph(chGraph, qg)
@@ -320,7 +313,7 @@ func TestQueryRoutingCHGraph_WithVirtualEdgesAndShortcuts(t *testing.T) {
 
 	chGraph, chBuilder := f.edgeBasedCHGraph()
 	chBuilder.SetIdentityLevels()
-	chBuilder.AddShortcutEdgeBased(0, 2, testScFwdDir, 20, 0, 1, 0, 2)
+	chBuilder.AddShortcutEdgeBased(0, 2, storage.ScFwdDir, 20, 0, 1, 0, 2)
 
 	snap := snapForEdge(t, 50.00, 10.05, edge)
 
@@ -384,7 +377,7 @@ func TestQueryRoutingCHGraph_GetEdgeIteratorState(t *testing.T) {
 
 	chGraph, chBuilder := f.edgeBasedCHGraph()
 	chBuilder.SetIdentityLevels()
-	chBuilder.AddShortcutEdgeBased(0, 2, testScFwdDir, 20, 0, 1, 0, 2)
+	chBuilder.AddShortcutEdgeBased(0, 2, storage.ScFwdDir, 20, 0, 1, 0, 2)
 
 	snap := snapForEdge(t, 50.00, 10.05, edge)
 
@@ -448,7 +441,7 @@ func TestQueryRoutingCHGraph_GetWeight(t *testing.T) {
 
 	chGraph, chBuilder := f.edgeBasedCHGraph()
 	chBuilder.SetIdentityLevels()
-	chBuilder.AddShortcutEdgeBased(0, 2, testScDirMask, 20, 0, 1, 0, 2)
+	chBuilder.AddShortcutEdgeBased(0, 2, storage.ScDirMask, 20, 0, 1, 0, 2)
 
 	// without query graph
 	iter := chGraph.CreateOutEdgeExplorer().SetBaseNode(0)
@@ -541,7 +534,7 @@ func TestQueryRoutingCHGraph_GetTurnCost(t *testing.T) {
 
 	chGraph, chBuilder := f.edgeBasedCHGraph()
 	chBuilder.SetIdentityLevels()
-	chBuilder.AddShortcutEdgeBased(0, 2, testScFwdDir, 20, 0, 1, 0, 2)
+	chBuilder.AddShortcutEdgeBased(0, 2, storage.ScFwdDir, 20, 0, 1, 0, 2)
 
 	// without virtual nodes
 	assert.InDelta(t, 5, chGraph.GetTurnWeight(0, 1, 1), 1e-9)

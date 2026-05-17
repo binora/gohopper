@@ -67,9 +67,11 @@ func (m PMap) GetFloat64(key string, def float64) float64 {
 	if !ok || v == nil {
 		return def
 	}
-	f, ok := v.(float64)
-	if ok {
+	if f, ok := v.(float64); ok {
 		return f
+	}
+	if i, ok := v.(int); ok {
+		return float64(i)
 	}
 	return def
 }

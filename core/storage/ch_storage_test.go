@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Shortcut direction constants (same as testScFwdDir, avoid import cycle in tests).
-const testScFwdDir = 0x1
-
 func TestCHStorage_SetAndGetLevels(t *testing.T) {
 	dir := NewRAMDirectory("", false)
 	store := NewCHStorage(dir, "ch1", -1, false)
@@ -32,11 +29,11 @@ func TestCHStorage_CreateAndLoad(t *testing.T) {
 		dir := NewGHDirectory(path, DATypeRAMIntStore)
 		chStorage := NewCHStorage(dir, "car", -1, false)
 		chStorage.Create(5, 3)
-		assert.Equal(t, 0, chStorage.ShortcutNodeBased(0, 1, testScFwdDir, 10, 3, 5))
-		assert.Equal(t, 1, chStorage.ShortcutNodeBased(1, 2, testScFwdDir, 11, 4, 6))
-		assert.Equal(t, 2, chStorage.ShortcutNodeBased(2, 3, testScFwdDir, 12, 5, 7))
+		assert.Equal(t, 0, chStorage.ShortcutNodeBased(0, 1, ScFwdDir, 10, 3, 5))
+		assert.Equal(t, 1, chStorage.ShortcutNodeBased(1, 2, ScFwdDir, 11, 4, 6))
+		assert.Equal(t, 2, chStorage.ShortcutNodeBased(2, 3, ScFwdDir, 12, 5, 7))
 		// exceeding the number of expected shortcuts is ok, the container will just grow
-		assert.Equal(t, 3, chStorage.ShortcutNodeBased(3, 4, testScFwdDir, 13, 6, 8))
+		assert.Equal(t, 3, chStorage.ShortcutNodeBased(3, 4, ScFwdDir, 13, 6, 8))
 		assert.Equal(t, 5, chStorage.GetNodes())
 		assert.Equal(t, 4, chStorage.GetShortcuts())
 		chStorage.Flush()
@@ -81,7 +78,7 @@ func TestCHStorage_LargeNodeA(t *testing.T) {
 	nodeA := math.MaxInt32
 	access := NewRAMIntDataAccess("", "", false, -1)
 	access.Create(1000)
-	access.SetInt(0, int32(nodeA<<1|1&testScFwdDir))
+	access.SetInt(0, int32(nodeA<<1|1&ScFwdDir))
 	assert.True(t, access.GetInt(0) < 0)
 	assert.Equal(t, int32(math.MaxInt32), int32(uint32(access.GetInt(0))>>1))
 }

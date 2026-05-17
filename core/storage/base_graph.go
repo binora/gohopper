@@ -135,6 +135,7 @@ func (bg *BaseGraph) RelabelNodes(getNewNode func(int) int) {
 func (bg *BaseGraph) GetTurnCostStorage() *TurnCostStorage { return bg.TurnCostStorage }
 func (bg *BaseGraph) GetMaxGeoRef() int64                  { return bg.maxGeoRef }
 func (bg *BaseGraph) GetDirectory() Directory              { return bg.dir }
+func (bg *BaseGraph) GetSegmentSize() int                  { return bg.segmentSize }
 
 func (bg *BaseGraph) checkNotInitialized() {
 	if bg.initialized {
