@@ -8,14 +8,9 @@ import (
 	webapi "gohopper/web-api"
 )
 
-// PreparationHandler mirrors com.graphhopper.routing.ch.CHPreparationHandler.
-// It orchestrates load/prepare of one or more CH profiles against a BaseGraph.
-//
-// Divergence from Java: Java runs Load/Prepare concurrently when
-// preparationThreads > 1 via GHUtility.runConcurrently; gohopper currently has
-// no concurrent task helper, so both Load and Prepare iterate sequentially.
-// Java itself defaults to preparationThreads=1, so the default behavior is
-// identical. A concurrent variant can be added when a caller needs it.
+// PreparationHandler orchestrates load/prepare of one or more CH profiles
+// against a BaseGraph. Sequential only; Java's concurrent path
+// (GHUtility.runConcurrently) is not yet ported.
 type PreparationHandler struct {
 	chProfiles         []config.CHProfile
 	preparationThreads int
@@ -29,18 +24,13 @@ func NewPreparationHandler() *PreparationHandler {
 	}
 }
 
-// InitConfig is the minimal GraphHopperConfig surface needed by Init. It
-// exists to keep ch decoupled from core (where *GraphHopperConfig lives) —
-// importing core here would create a cycle since core imports core/routing.
+// InitConfig is the minimal GraphHopperConfig surface needed by Init —
+// taking the full *core.GraphHopperConfig would cycle through core/routing.
 type InitConfig interface {
 	Has(key string) bool
 	GetInt(key string, def int) int
 }
 
-// Init mirrors Java CHPreparationHandler.init: it enforces the deprecated-key
-// migrations, reads the preparation thread count, and accepts the CH profiles
-// and PMap directly (Java's chConfig.getCHProfiles()/asPMap() would require
-// extra accessors here that no Go caller needs yet).
 func (h *PreparationHandler) Init(cfg InitConfig, chProfiles []config.CHProfile, pMap webapi.PMap) {
 	if cfg.Has("prepare.threads") {
 		panic("Use prepare.ch.threads instead of prepare.threads")
@@ -110,7 +100,7 @@ func (h *PreparationHandler) Prepare(graph *storage.BaseGraph, props *storage.St
 		if closeEarly {
 			prepare.Close()
 		}
-		props.Put("prepare.ch.date."+name, time.Now().UTC().Format("2006-01-02_15-04-05"))
+		props.Put("prepare.ch.date."+name, time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 	}
 	return results
 }

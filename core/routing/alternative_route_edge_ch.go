@@ -1,8 +1,10 @@
 package routing
 
 import (
+	"cmp"
+	"fmt"
+	"maps"
 	"slices"
-	"sort"
 
 	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
@@ -83,18 +85,14 @@ func (a *AlternativeRouteEdgeCH) CalcAlternatives(s, t int) []AlternativeInfo {
 	// hppc.IntObjectHashMap's seeded iteration; Go map iteration is randomized
 	// per run, so without sorting the picked alternatives would be unstable
 	// across runs when several candidates share the same weight bucket.
-	keysFrom := make([]int, 0, len(a.bestWeightMapFrom))
-	for k := range a.bestWeightMapFrom {
-		keysFrom = append(keysFrom, k)
-	}
-	sort.Ints(keysFrom)
-	for _, k := range keysFrom {
+	weightLimit := bestPath.Weight * a.maxWeightFactor
+	for _, k := range slices.Sorted(maps.Keys(a.bestWeightMapFrom)) {
 		fromEntry := a.bestWeightMapFrom[k]
 		toEntry, ok := bestByAdjNode[fromEntry.AdjNode]
 		if !ok {
 			continue
 		}
-		if fromEntry.GetWeightOfVisitedPath()+toEntry.GetWeightOfVisitedPath() > bestPath.Weight*a.maxWeightFactor {
+		if fromEntry.GetWeightOfVisitedPath()+toEntry.GetWeightOfVisitedPath() > weightLimit {
 			continue
 		}
 		preliminary := a.createPathExtractor().Extract(fromEntry, toEntry,
@@ -109,10 +107,13 @@ func (a *AlternativeRouteEdgeCH) CalcAlternatives(s, t int) []AlternativeInfo {
 			weight: 2*(fromEntry.GetWeightOfVisitedPath()+toEntry.GetWeightOfVisitedPath()) + share,
 		})
 	}
-	sort.Slice(potentials, func(i, j int) bool { return potentials[i].weight < potentials[j].weight })
+	slices.SortFunc(potentials, func(a, b potentialEdgeAlternativeInfo) int { return cmp.Compare(a.weight, b.weight) })
 
 	baseGraph := a.Graph.GetBaseGraph()
-	w, _ := a.Graph.GetWeighting().(weighting.Weighting)
+	w, ok := a.Graph.GetWeighting().(weighting.Weighting)
+	if !ok {
+		panic(fmt.Sprintf("CH weighting %T does not implement weighting.Weighting", a.Graph.GetWeighting()))
+	}
 	for _, p := range potentials {
 		v := p.v
 		tailSv := p.edgeIn
@@ -254,14 +255,8 @@ func nextEdgeTMetersAway(edges []util.EdgeIteratorState, vIndex int, T float64) 
 func concatEdgePaths(baseGraph storage.Graph, w weighting.Weighting, suvPath, uvtPath *Path) *Path {
 	p := NewPath(baseGraph)
 	p.SetFromNode(suvPath.FromNode)
-	p.EdgeIDs = append(p.EdgeIDs, suvPath.EdgeIDs...)
-	if len(uvtPath.EdgeIDs) == 0 {
-		panic("uvtPath.EdgeIDs should not be empty")
-	}
 	uvEdge := uvtPath.EdgeIDs[0]
-	for _, e := range uvtPath.EdgeIDs[1:] {
-		p.AddEdge(e)
-	}
+	p.EdgeIDs = slices.Concat(suvPath.EdgeIDs, uvtPath.EdgeIDs[1:])
 	vuEdgeState := baseGraph.GetEdgeIteratorState(uvEdge, uvtPath.FromNode)
 	p.SetEndNode(uvtPath.EndNode)
 	p.SetWeight(suvPath.Weight + uvtPath.Weight - w.CalcEdgeWeight(vuEdgeState, true))

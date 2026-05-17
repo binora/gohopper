@@ -1,8 +1,9 @@
 package routing
 
 import (
+	"cmp"
+	"maps"
 	"slices"
-	"sort"
 
 	"gohopper/core/storage"
 	"gohopper/core/util"
@@ -90,19 +91,18 @@ func (a *AlternativeRouteCH) CalcAlternatives(s, t int) []AlternativeInfo {
 	})
 
 	var potentials []potentialAlternativeInfo
-	// Iterate in deterministic key order — see note in AlternativeRouteEdgeCH.
-	keysFrom := make([]int, 0, len(a.bestWeightMapFrom))
-	for k := range a.bestWeightMapFrom {
-		keysFrom = append(keysFrom, k)
-	}
-	sort.Ints(keysFrom)
-	for _, v := range keysFrom {
+	// Iterate in deterministic key order: Java relies on hppc.IntObjectHashMap's
+	// seeded iteration, but Go map iteration is randomized per run, so without
+	// sorting the picked alternatives would be unstable when several candidates
+	// share the same weight bucket.
+	weightLimit := bestPath.Weight * a.maxWeightFactor
+	for _, v := range slices.Sorted(maps.Keys(a.bestWeightMapFrom)) {
 		fromEntry := a.bestWeightMapFrom[v]
 		toEntry, ok := a.bestWeightMapTo[v]
 		if !ok {
 			continue
 		}
-		if fromEntry.GetWeightOfVisitedPath()+toEntry.GetWeightOfVisitedPath() > bestPath.Weight*a.maxWeightFactor {
+		if fromEntry.GetWeightOfVisitedPath()+toEntry.GetWeightOfVisitedPath() > weightLimit {
 			continue
 		}
 		preliminary := a.createPathExtractor().Extract(fromEntry, toEntry,
@@ -116,7 +116,7 @@ func (a *AlternativeRouteCH) CalcAlternatives(s, t int) []AlternativeInfo {
 			weight: 2*(fromEntry.GetWeightOfVisitedPath()+toEntry.GetWeightOfVisitedPath()) + share,
 		})
 	}
-	sort.Slice(potentials, func(i, j int) bool { return potentials[i].weight < potentials[j].weight })
+	slices.SortFunc(potentials, func(a, b potentialAlternativeInfo) int { return cmp.Compare(a.weight, b.weight) })
 
 	for _, p := range potentials {
 		v := p.v
@@ -251,9 +251,8 @@ func nextNodeTMetersAway(edges []util.EdgeIteratorState, vIndex int, T float64) 
 
 func concatPaths(baseGraph storage.Graph, svPath, vtPath *Path) *Path {
 	p := NewPath(baseGraph)
-	p.EdgeIDs = append(p.EdgeIDs, svPath.EdgeIDs...)
-	p.EdgeIDs = append(p.EdgeIDs, vtPath.EdgeIDs...)
-	p.SetFromNode(svPath.CalcNodes()[0])
+	p.EdgeIDs = slices.Concat(svPath.EdgeIDs, vtPath.EdgeIDs)
+	p.SetFromNode(svPath.FromNode)
 	p.SetEndNode(vtPath.EndNode)
 	p.SetWeight(svPath.Weight + vtPath.Weight)
 	p.SetDistance(svPath.Distance + vtPath.Distance)
