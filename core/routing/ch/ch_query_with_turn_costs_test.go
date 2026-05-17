@@ -3,6 +3,7 @@ package ch
 import (
 	"math"
 	"math/rand"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1644,4 +1645,362 @@ func TestPreparedCH_RandomContractionOrder_ComplicatedGraphAndPath(t *testing.T)
 	},
 		[]int{0, 1, 7, 8, 3, 2, 7, 12, 11, 6, 7, 13, 14, 9, 10, 5, 4, 9, 14, 19, 24, 23, 22, 21, 16, 17, 18, 19, 20, 25, 26},
 		49, 4, 0, 26)
+}
+
+// -----------------------------------------------------------------------------
+// Dijkstra-comparison stress tests (gohopper-9x7.6).
+//
+// Ports the six @RepeatedTest(10) cases from
+// core/src/test/java/com/graphhopper/routing/ch/CHTurnCostTest.java:
+//
+//	L581  testFindPath_highlyConnectedGraph_compareWithDijkstra
+//	L1059 testFindPath_random_compareWithDijkstra
+//	L1066 testFindPath_random_compareWithDijkstra_finiteUTurnCost
+//	L1074 testFindPath_random_compareWithDijkstra_zeroUTurnCost
+//	L1096 testFindPath_heuristic_compareWithDijkstra
+//	L1103 testFindPath_heuristic_compareWithDijkstra_finiteUTurnCost
+//
+// Each @RepeatedTest(10) becomes 10 seeded t.Run subtests with seeds
+// int64(0)..int64(9).
+// -----------------------------------------------------------------------------
+
+// chStressFixture mirrors the Java CHTurnCostTest @BeforeEach state. The
+// chConfig field is mutable so finiteUTurnCost / zeroUTurnCost variants
+// can rebind it between graph build and CH preparation, matching Java
+// lines 1069, 1077, and 1106.
+type chStressFixture struct {
+	maxCost     int
+	speedEnc    ev.DecimalEncodedValue
+	turnCostEnc ev.DecimalEncodedValue
+	graph       *storage.BaseGraph
+	chConfigs   []*CHConfig
+	chConfig    *CHConfig
+	checkStrict bool
+}
+
+func newCHStressFixture(seed int64) *chStressFixture {
+	maxCost := 10
+	speedEnc := ev.NewDecimalEncodedValueImpl("speed", 5, 5, true)
+	turnCostEnc := ev.TurnCostCreate("car", maxCost)
+	em := routingutil.Start().Add(speedEnc).AddTurnCostEncodedValue(turnCostEnc).Build()
+	g := storage.NewBaseGraphBuilder(em.BytesForFlags).SetWithTurnCosts(true).CreateGraph()
+
+	configs := chStressBuildConfigs(speedEnc, turnCostEnc, g, seed)
+	return &chStressFixture{
+		maxCost:     maxCost,
+		speedEnc:    speedEnc,
+		turnCostEnc: turnCostEnc,
+		graph:       g,
+		chConfigs:   configs,
+		chConfig:    configs[0],
+		checkStrict: true,
+	}
+}
+
+// chStressBuildConfigs mirrors Java createCHConfigs: 3 fixed profiles
+// (infinite, 0, 50 u-turn cost) plus random profiles in [10, 100) until
+// the set holds 6 distinct configs. The seed makes the random profiles
+// reproducible within a subtest.
+func chStressBuildConfigs(speedEnc, turnCostEnc ev.DecimalEncodedValue, g *storage.BaseGraph, seed int64) []*CHConfig {
+	makeConfig := func(name string, uTurnCosts float64) *CHConfig {
+		w := weighting.NewSpeedWeightingWithTurnCosts(speedEnc, turnCostEnc, g.GetTurnCostStorage(), g.GetNodeAccess(), uTurnCosts)
+		return NewCHConfigEdgeBased(name, w)
+	}
+	configs := []*CHConfig{
+		makeConfig("p0", math.Inf(1)),
+		makeConfig("p1", 0),
+		makeConfig("p2", 50),
+	}
+	seen := map[float64]bool{math.Inf(1): true, 0: true, 50: true}
+	rnd := rand.New(rand.NewSource(seed))
+	for len(configs) < 6 {
+		u := float64(10 + rnd.Intn(90))
+		if seen[u] {
+			continue
+		}
+		seen[u] = true
+		configs = append(configs, makeConfig("p"+strconv.Itoa(len(configs)), u))
+	}
+	return configs
+}
+
+// shuffleIotaRnd returns a randomized permutation of [0, n) using the supplied
+// *rand.Rand (Fisher-Yates). Distinct from shuffleIota(int, int64) above, which
+// implements the Java half-swap variant used by 9x7.3.
+func shuffleIotaRnd(n int, rnd *rand.Rand) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = i
+	}
+	rnd.Shuffle(n, func(i, j int) { out[i], out[j] = out[j], out[i] })
+	return out
+}
+
+// findPathUsingDijkstra mirrors Java findPathUsingDijkstra: edge-based
+// Dijkstra over the BaseGraph using the current chConfig weighting.
+func (f *chStressFixture) findPathUsingDijkstra(from, to int) *routing.Path {
+	d := routing.NewDijkstra(f.graph, f.chConfig.GetWeighting(), routingutil.EdgeBased)
+	return d.CalcPath(from, to)
+}
+
+// prepareCHFixed mirrors Java prepareCH(contractionOrder): freezes the
+// graph if needed and runs CH preparation with the given fixed order.
+func (f *chStressFixture) prepareCHFixed(order []int) storage.RoutingCHGraph {
+	if !f.graph.IsFrozen() {
+		f.graph.Freeze()
+	}
+	prepare := FromGraph(f.graph, f.chConfig).UseFixedNodeOrdering(NodeOrderingFromArray(order...))
+	res := prepare.DoWork()
+	return storage.NewRoutingCHGraph(f.graph, res.GetCHStorage(), res.GetCHConfig().GetWeighting())
+}
+
+// prepareCHAutomatic mirrors Java automaticPrepareCH: heuristic node
+// priority with the same PMap tuning constants used in Java.
+func (f *chStressFixture) prepareCHAutomatic() storage.RoutingCHGraph {
+	if !f.graph.IsFrozen() {
+		f.graph.Freeze()
+	}
+	pMap := webapi.NewPMap().
+		PutObject(PeriodicUpdates, 20).
+		PutObject(LastLazyNodesUpdates, 100).
+		PutObject(NeighborUpdates, 4).
+		PutObject(LogMessages, 10)
+	prepare := FromGraph(f.graph, f.chConfig).SetParams(pMap)
+	res := prepare.DoWork()
+	return storage.NewRoutingCHGraph(f.graph, res.GetCHStorage(), res.GetCHConfig().GetWeighting())
+}
+
+// chStressPath runs a Dijkstra-bi CH query over the prepared graph.
+func chStressPath(chGraph storage.RoutingCHGraph, from, to int) *routing.Path {
+	opts := webapi.NewPMap().PutObject(chRoutingAlgorithmKey, routing.AlgoDijkstraBi)
+	return NewCHRoutingAlgorithmFactory(chGraph).CreateAlgo(opts).CalcPath(from, to)
+}
+
+// compareCHWithDijkstra mirrors Java compareCHWithDijkstra. It prepares
+// CH with a fixed contraction order, then runs numQueries random
+// (from, to) pairs and asserts CH and Dijkstra agree on weight (and
+// distance/time when checkStrict).
+func (f *chStressFixture) compareCHWithDijkstra(t *testing.T, numQueries int, order []int, querySeed int64) {
+	t.Helper()
+	chGraph := f.prepareCHFixed(order)
+	rnd := rand.New(rand.NewSource(querySeed))
+	n := f.graph.GetNodes()
+	for i := 0; i < numQueries; i++ {
+		f.compareCHQueryWithDijkstra(t, chGraph, rnd.Intn(n), rnd.Intn(n))
+	}
+}
+
+// automaticCompareCHWithDijkstra mirrors Java automaticCompareCHWithDijkstra.
+func (f *chStressFixture) automaticCompareCHWithDijkstra(t *testing.T, numQueries int, querySeed int64) {
+	t.Helper()
+	chGraph := f.prepareCHAutomatic()
+	rnd := rand.New(rand.NewSource(querySeed))
+	n := f.graph.GetNodes()
+	for i := 0; i < numQueries; i++ {
+		f.compareCHQueryWithDijkstra(t, chGraph, rnd.Intn(n), rnd.Intn(n))
+	}
+}
+
+// compareCHQueryWithDijkstra mirrors Java compareCHQueryWithDijkstra. It
+// runs both algorithms for the given pair and asserts they agree. When
+// checkStrict is false only weights are compared (matching Java).
+func (f *chStressFixture) compareCHQueryWithDijkstra(t *testing.T, chGraph storage.RoutingCHGraph, from, to int) {
+	t.Helper()
+	dPath := f.findPathUsingDijkstra(from, to)
+	chPath := chStressPath(chGraph, from, to)
+	disagree := math.Abs(dPath.Weight-chPath.Weight) > 1e-2
+	if f.checkStrict {
+		disagree = disagree ||
+			math.Abs(dPath.Distance-chPath.Distance) > 1e-2 ||
+			math.Abs(float64(dPath.Time-chPath.Time)) > 1
+	}
+	if disagree {
+		assert.Failf(t, "Dijkstra and CH disagree",
+			"from=%d to=%d dijkstra(w=%g,d=%g,t=%d nodes=%v) ch(w=%g,d=%g,t=%d nodes=%v)",
+			from, to, dPath.Weight, dPath.Distance, dPath.Time, dPath.CalcNodes(),
+			chPath.Weight, chPath.Distance, chPath.Time, chPath.CalcNodes())
+	}
+}
+
+// chStressNextCost mirrors Java nextCost.
+func chStressNextCost(rnd *rand.Rand, maxCost int) int { return rnd.Intn(3 * maxCost) }
+
+// chStressNextDist mirrors Java nextDist.
+func chStressNextDist(rnd *rand.Rand, maxDist int) float64 { return rnd.Float64() * float64(maxDist) }
+
+// chStressSetCostOrRestriction mirrors Java setCostOrRestriction.
+func (f *chStressFixture) chStressSetCostOrRestriction(inEdge, viaNode, outEdge, cost int) {
+	if cost >= f.maxCost {
+		f.graph.GetTurnCostStorage().SetDecimal(f.graph.GetNodeAccess(), f.turnCostEnc, inEdge, viaNode, outEdge, math.Inf(1))
+	} else {
+		f.graph.GetTurnCostStorage().SetDecimal(f.graph.GetNodeAccess(), f.turnCostEnc, inEdge, viaNode, outEdge, float64(cost))
+	}
+}
+
+// stressRandomQueries / stressHighlyConnectedQueries mirror Java's
+// 100 / 1000 numQueries values. If the 30s runtime budget is exceeded,
+// reduce these here; the plan forbids dropping subtests.
+const (
+	stressRandomQueries          = 100
+	stressHighlyConnectedQueries = 1000
+)
+
+func TestCHTurnCost_FindPath_HighlyConnectedGraph_CompareWithDijkstra(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			f := newCHStressFixture(seed)
+			rnd := rand.New(rand.NewSource(seed))
+
+			const (
+				size    = 4
+				maxDist = 40
+			)
+			// horizontal edges
+			for i := 0; i < size; i++ {
+				for j := 0; j < size-1; j++ {
+					from := i*size + j
+					to := from + 1
+					f.graph.Edge(from, to).SetDistance(chStressNextDist(rnd, maxDist)).SetDecimalBothDir(f.speedEnc, 10, 10)
+				}
+			}
+			// vertical edges
+			for i := 0; i < size-1; i++ {
+				for j := 0; j < size; j++ {
+					from := i*size + j
+					to := from + size
+					f.graph.Edge(from, to).SetDistance(chStressNextDist(rnd, maxDist)).SetDecimalBothDir(f.speedEnc, 10, 10)
+				}
+			}
+			// diagonal edges
+			for i := 0; i < size-1; i++ {
+				for j := 0; j < size; j++ {
+					from := i*size + j
+					if j < size-1 {
+						f.graph.Edge(from, from+size+1).SetDistance(chStressNextDist(rnd, maxDist)).SetDecimalBothDir(f.speedEnc, 10, 10)
+					}
+					if j > 0 {
+						f.graph.Edge(from, from+size-1).SetDistance(chStressNextDist(rnd, maxDist)).SetDecimalBothDir(f.speedEnc, 10, 10)
+					}
+				}
+			}
+			f.graph.Freeze()
+
+			// turn costs / restrictions on every (in, out) pair, skipping u-turns
+			inExplorer := f.graph.CreateEdgeExplorer(routingutil.AllEdges)
+			outExplorer := f.graph.CreateEdgeExplorer(routingutil.AllEdges)
+			for node := 0; node < size*size; node++ {
+				inIter := inExplorer.SetBaseNode(node)
+				for inIter.Next() {
+					outIter := outExplorer.SetBaseNode(node)
+					for outIter.Next() {
+						if inIter.GetEdge() == outIter.GetEdge() {
+							continue
+						}
+						f.chStressSetCostOrRestriction(inIter.GetEdge(), node, outIter.GetEdge(), chStressNextCost(rnd, f.maxCost))
+					}
+				}
+			}
+
+			order := shuffleIotaRnd(f.graph.GetNodes(), rnd)
+			f.checkStrict = false
+			f.compareCHWithDijkstra(t, stressHighlyConnectedQueries, order, seed)
+		})
+	}
+}
+
+func TestCHTurnCost_FindPath_Random_CompareWithDijkstra(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			chStressRunRandom(t, seed, 0 /* default config */)
+		})
+	}
+}
+
+func TestCHTurnCost_FindPath_Random_CompareWithDijkstra_FiniteUTurnCost(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			// Java: chConfig = chConfigs.get(2 + rnd.nextInt(chConfigs.size() - 2))
+			cfgPicker := rand.New(rand.NewSource(seed))
+			chStressRunRandom(t, seed, 2+cfgPicker.Intn(4))
+		})
+	}
+}
+
+func TestCHTurnCost_FindPath_Random_CompareWithDijkstra_ZeroUTurnCost(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			// Java: chConfig = chConfigs.get(1)
+			chStressRunRandom(t, seed, 1)
+		})
+	}
+}
+
+// chStressRunRandom mirrors Java compareWithDijkstraOnRandomGraph. The
+// chConfigIdx argument lets the three random subtests switch profiles
+// between graph build and CH prepare (Java lines 1069 / 1077).
+func chStressRunRandom(t *testing.T, seed int64, chConfigIdx int) {
+	t.Helper()
+	f := newCHStressFixture(seed)
+	graphRnd := rand.New(rand.NewSource(seed))
+	util.RandomGraph(f.graph.GetNodeAccess(), f.graph.Edge, graphRnd, 20, 3.0, true, f.speedEnc, nil, 0.9, 0.8)
+	tcs := f.graph.GetTurnCostStorage()
+	turnRnd := rand.New(rand.NewSource(seed))
+	util.AddRandomTurnCosts(
+		f.graph.GetNodes(), turnRnd,
+		f.graph.CreateEdgeExplorer(routingutil.AllEdges),
+		f.graph.CreateEdgeExplorer(routingutil.AllEdges),
+		f.turnCostEnc, f.maxCost,
+		func(enc ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int, cost float64) {
+			tcs.SetDecimal(f.graph.GetNodeAccess(), enc, fromEdge, viaNode, toEdge, cost)
+		})
+	f.graph.Freeze()
+	f.chConfig = f.chConfigs[chConfigIdx]
+	f.checkStrict = false
+	order := shuffleIotaRnd(f.graph.GetNodes(), graphRnd)
+	f.compareCHWithDijkstra(t, stressRandomQueries, order, seed)
+}
+
+func TestCHTurnCost_FindPath_Heuristic_CompareWithDijkstra(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			chStressRunHeuristic(t, seed, 0 /* default config */)
+		})
+	}
+}
+
+func TestCHTurnCost_FindPath_Heuristic_CompareWithDijkstra_FiniteUTurnCost(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			cfgPicker := rand.New(rand.NewSource(seed))
+			chStressRunHeuristic(t, seed, 2+cfgPicker.Intn(4))
+		})
+	}
+}
+
+// chStressRunHeuristic mirrors Java compareWithDijkstraOnRandomGraph_heuristic.
+func chStressRunHeuristic(t *testing.T, seed int64, chConfigIdx int) {
+	t.Helper()
+	f := newCHStressFixture(seed)
+	rnd := rand.New(rand.NewSource(seed))
+	util.RandomGraph(f.graph.GetNodeAccess(), f.graph.Edge, rnd, 20, 3.0, true, f.speedEnc, nil, 0.9, 0.8)
+	tcs := f.graph.GetTurnCostStorage()
+	turnRnd := rand.New(rand.NewSource(seed))
+	util.AddRandomTurnCosts(
+		f.graph.GetNodes(), turnRnd,
+		f.graph.CreateEdgeExplorer(routingutil.AllEdges),
+		f.graph.CreateEdgeExplorer(routingutil.AllEdges),
+		f.turnCostEnc, f.maxCost,
+		func(enc ev.DecimalEncodedValue, fromEdge, viaNode, toEdge int, cost float64) {
+			tcs.SetDecimal(f.graph.GetNodeAccess(), enc, fromEdge, viaNode, toEdge, cost)
+		})
+	f.graph.Freeze()
+	f.chConfig = f.chConfigs[chConfigIdx]
+	f.checkStrict = false
+	f.automaticCompareCHWithDijkstra(t, stressRandomQueries, seed)
 }
