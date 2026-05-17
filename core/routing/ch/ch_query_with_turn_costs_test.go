@@ -1132,3 +1132,304 @@ func TestPreparedCH_CalcTurnCostTime(t *testing.T) {
 	f.graph.Freeze()
 	f.checkPath(t, []int{2, 1, 0, 4}, 3, 8, 2, 4, []int{2, 0, 1, 3, 4})
 }
+
+// --- Phase 2: random-contraction-order cases ported from CHTurnCostTest ---
+
+// shuffleIota returns a permutation of [0, n) seeded deterministically.
+// Mirrors Java's ArrayUtil.shuffle(ArrayUtil.iota(n), rnd): for x1 in [0, n/2),
+// swap with x2 = rnd.nextInt(n/2) + n/2. We use Go's math/rand on the supplied
+// seed so failures are reproducible (Java's `new Random()` uses System.nanoTime()).
+func shuffleIota(n int, seed int64) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = i
+	}
+	rnd := rand.New(rand.NewSource(seed))
+	half := n / 2
+	for x1 := 0; x1 < half; x1++ {
+		x2 := rnd.Intn(half) + half
+		out[x1], out[x2] = out[x2], out[x1]
+	}
+	return out
+}
+
+// runRandomContractionOrderTest expands Java's @RepeatedTest(10) into 10 seeded subtests.
+// Each subtest re-creates the graph from scratch (Java relies on @BeforeEach) and runs
+// `checkPath` against a freshly shuffled contraction order keyed off seed=i.
+func runRandomContractionOrderTest(t *testing.T, build func(*preparedCHTurnCostFixture), expectedPath []int, expectedEdgeWeight, expectedTurnCosts, from, to int) {
+	t.Helper()
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run("seed="+fmtItoa(int(seed)), func(t *testing.T) {
+			f := newPreparedCHTurnCostFixture()
+			build(f)
+			order := shuffleIota(f.graph.GetNodes(), seed)
+			f.checkPath(t, expectedPath, expectedEdgeWeight, expectedTurnCosts, from, to, order)
+		})
+	}
+}
+
+// TestPreparedCH_RandomContractionOrder_Linear ports Java CHTurnCostTest L118.
+// Java uses @RepeatedTest(10); we expand into 10 deterministic seeded subtests.
+func TestPreparedCH_RandomContractionOrder_Linear(t *testing.T) {
+	runRandomContractionOrderTest(t, func(f *preparedCHTurnCostFixture) {
+		// 2-1-0-3-4
+		f.graph.Edge(2, 1).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(1, 0).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(0, 3).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(3, 4).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Freeze()
+		f.setTurnCost(2, 1, 0, 2)
+		f.setTurnCost(0, 3, 4, 4)
+	}, []int{2, 1, 0, 3, 4}, 9, 6, 2, 4)
+}
+
+// TestPreparedCH_RandomContractionOrder_DuplicateEdges ports Java CHTurnCostTest L131.
+// Java compares CH and Dijkstra over 10 random queries; we expand each repetition into
+// a seeded subtest that prepares CH with a shuffled order and compares against Dijkstra.
+func TestPreparedCH_RandomContractionOrder_DuplicateEdges(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run("seed="+fmtItoa(int(seed)), func(t *testing.T) {
+			f := newPreparedCHTurnCostFixture()
+			//  /\    /<-3
+			// 0  1--2
+			//  \/    \->4
+			f.graph.Edge(0, 1).SetDistance(50).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Edge(0, 1).SetDistance(60).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Edge(1, 2).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Edge(3, 2).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.graph.Edge(2, 4).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 0)
+			f.setRestriction(3, 2, 4)
+			f.graph.Freeze()
+			f.compareCHWithDijkstra(t, 10, []int{0, 1, 2, 3, 4}, seed)
+		})
+	}
+}
+
+// TestPreparedCH_RandomContractionOrder_DoubleDuplicateEdges ports Java CHTurnCostTest L146.
+func TestPreparedCH_RandomContractionOrder_DoubleDuplicateEdges(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		seed := int64(i)
+		t.Run("seed="+fmtItoa(int(seed)), func(t *testing.T) {
+			f := newPreparedCHTurnCostFixture()
+			//  /\ /\
+			// 0  1  2--3
+			//  \/ \/
+			f.graph.Edge(0, 1).SetDistance(250.789).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Edge(0, 1).SetDistance(260.016).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Edge(1, 2).SetDistance(210.902).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Edge(1, 2).SetDistance(210.862).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Edge(2, 3).SetDistance(520.987).SetDecimalBothDir(f.speedEnc, 10, 10)
+			f.graph.Freeze()
+			f.compareCHWithDijkstra(t, 100, []int{0, 1, 2, 3}, seed)
+		})
+	}
+}
+
+// TestPreparedCH_RandomContractionOrder_SimpleLoop ports Java CHTurnCostTest L309.
+func TestPreparedCH_RandomContractionOrder_SimpleLoop(t *testing.T) {
+	runRandomContractionOrderTest(t, func(f *preparedCHTurnCostFixture) {
+		//      2
+		//     /|
+		//  0-4-3
+		//    |
+		//    1
+		f.graph.Edge(0, 4).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(4, 3).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(3, 2).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(2, 4).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(4, 1).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Freeze()
+
+		// enforce loop (going counter-clockwise)
+		f.setRestriction(0, 4, 1)
+		f.setTurnCost(4, 2, 3, 4)
+		f.setTurnCost(3, 2, 4, 2)
+	}, []int{0, 4, 3, 2, 4, 1}, 7, 2, 0, 1)
+}
+
+// TestPreparedCH_RandomContractionOrder_SingleDirectedLoop ports Java CHTurnCostTest L331.
+func TestPreparedCH_RandomContractionOrder_SingleDirectedLoop(t *testing.T) {
+	runRandomContractionOrderTest(t, func(f *preparedCHTurnCostFixture) {
+		//  3 1-2
+		//  | | |
+		//  7-5-0
+		//    |
+		//    6-4
+		f.graph.Edge(3, 7).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(7, 5).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(5, 0).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(0, 2).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(2, 1).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(1, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(5, 6).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(6, 4).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Freeze()
+
+		f.setRestriction(7, 5, 6)
+		f.setTurnCost(0, 2, 1, 2)
+	}, []int{3, 7, 5, 0, 2, 1, 5, 6, 4}, 12, 2, 3, 4)
+}
+
+// TestPreparedCH_RandomContractionOrder_SingleLoop ports Java CHTurnCostTest L358.
+func TestPreparedCH_RandomContractionOrder_SingleLoop(t *testing.T) {
+	runRandomContractionOrderTest(t, func(f *preparedCHTurnCostFixture) {
+		//  0   4
+		//  |  /|
+		//  1-2-3
+		//    |
+		//    5-6
+		f.graph.Edge(0, 1).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(1, 2).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(2, 3).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(3, 4).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(4, 2).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(2, 5).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(5, 6).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Freeze()
+
+		// enforce loop (going counter-clockwise)
+		f.setRestriction(1, 2, 5)
+		f.setTurnCost(3, 4, 2, 2)
+		f.setTurnCost(2, 4, 3, 4)
+	}, []int{0, 1, 2, 3, 4, 2, 5, 6}, 10, 2, 0, 6)
+}
+
+// TestPreparedCH_RandomContractionOrder_SingleLoopWithNoise ports Java CHTurnCostTest L386.
+func TestPreparedCH_RandomContractionOrder_SingleLoopWithNoise(t *testing.T) {
+	runRandomContractionOrderTest(t, func(f *preparedCHTurnCostFixture) {
+		//  0~15~16~17              solid lines: paths contributing to shortest path from 0 to 14
+		//  |        {              wiggly lines: extra paths to make it more complicated
+		//  1~ 2- 3~ 4
+		//  |  |  |  {
+		//  6- 7- 8  9
+		//  }  |  }  }
+		// 11~12-13-14
+		f.graph.Edge(0, 1).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(1, 6).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(6, 7).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(7, 8).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(8, 3).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(3, 2).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(2, 7).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(7, 12).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(12, 13).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(13, 14).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+
+		// some more edges to make it more complicated -> potentially find more bugs
+		f.graph.Edge(1, 2).SetDistance(80).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(6, 11).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(11, 12).SetDistance(500).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(8, 13).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(0, 15).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(15, 16).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(16, 17).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(17, 4).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(3, 4).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(4, 9).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(9, 14).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Freeze()
+
+		// enforce loop (going counter-clockwise)
+		f.setRestriction(6, 7, 12)
+		f.setTurnCost(8, 3, 2, 2)
+		f.setTurnCost(2, 3, 8, 4)
+
+		// make alternative paths not worth it
+		f.setTurnCost(1, 2, 7, 3)
+		f.setTurnCost(7, 8, 13, 8)
+		f.setTurnCost(8, 13, 14, 7)
+		f.setTurnCost(16, 17, 4, 4)
+		f.setTurnCost(4, 9, 14, 3)
+		f.setTurnCost(3, 4, 9, 3)
+	}, []int{0, 1, 6, 7, 8, 3, 2, 7, 12, 13, 14}, 15, 2, 0, 14)
+}
+
+// TestPreparedCH_RandomContractionOrder_ComplicatedGraphAndPath ports Java CHTurnCostTest L441.
+// This tries to find a rather complicated shortest path including a double loop and two p-turns
+// with several turn restrictions and turn costs.
+func TestPreparedCH_RandomContractionOrder_ComplicatedGraphAndPath(t *testing.T) {
+	runRandomContractionOrderTest(t, func(f *preparedCHTurnCostFixture) {
+		//  0              solid lines: paths contributing to shortest path from 0 to 26
+		//  |              wiggly lines: extra paths to make it more complicated
+		//  1~ 2- 3<~4- 5
+		//   \ |  |  |  |
+		//  6->7->8~ 9-10
+		//  |  |\    |
+		// 11-12 13-14~15~27
+		//     {  {  |     }
+		// 16-17-18-19-20~28
+		//  |  {  {  |  |  }
+		// 21-22-23-24 25-26
+
+		// first we add all edges that contribute to the shortest path, verticals: cost=1, horizontals: cost=2
+		f.graph.Edge(0, 1).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(1, 7).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(7, 8).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(8, 3).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(3, 2).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(2, 7).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(7, 12).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(12, 11).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(11, 6).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(6, 7).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(7, 13).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(13, 14).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(14, 9).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(9, 4).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(4, 5).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(5, 10).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(10, 9).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(14, 19).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(19, 18).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(18, 17).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(17, 16).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(16, 21).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(21, 22).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(22, 23).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(23, 24).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(24, 19).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(19, 20).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(20, 25).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(25, 26).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+
+		// some more edges to make it more complicated -> potentially find more bugs
+		f.graph.Edge(1, 2).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(4, 3).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 0)
+		f.graph.Edge(8, 9).SetDistance(750).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(17, 22).SetDistance(90).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(18, 23).SetDistance(150).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(12, 17).SetDistance(500).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(13, 18).SetDistance(800).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(14, 15).SetDistance(30).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(15, 27).SetDistance(20).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(27, 28).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(28, 26).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Edge(20, 28).SetDistance(10).SetDecimalBothDir(f.speedEnc, 10, 10)
+		f.graph.Freeze()
+
+		// enforce figure of eight curve at node 7
+		f.setRestriction(1, 7, 13)
+		f.setTurnCost(1, 7, 12, 7)
+		f.setTurnCost(2, 7, 13, 7)
+
+		// enforce p-loop at the top right (going counter-clockwise)
+		f.setRestriction(13, 14, 19)
+		f.setTurnCost(4, 5, 10, 3)
+		f.setTurnCost(10, 5, 4, 2)
+
+		// enforce big p-loop at bottom left (going clockwise)
+		f.setRestriction(14, 19, 20)
+		f.setTurnCost(17, 16, 21, 3)
+
+		// make some alternative paths not worth it
+		f.setTurnCost(1, 2, 7, 8)
+		f.setTurnCost(20, 28, 26, 3)
+
+		// add some more turn costs on the shortest path
+		f.setTurnCost(7, 13, 14, 2)
+	},
+		[]int{0, 1, 7, 8, 3, 2, 7, 12, 11, 6, 7, 13, 14, 9, 10, 5, 4, 9, 14, 19, 24, 23, 22, 21, 16, 17, 18, 19, 20, 25, 26},
+		49, 4, 0, 26)
+}
