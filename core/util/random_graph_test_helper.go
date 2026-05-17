@@ -43,13 +43,13 @@ func RandomGraph(na RandomGraphNodeAccess, edge RandomGraphEdgeFactory, rnd *ran
 	if numNodes < 2 || meanDegree < 1 {
 		panic("numNodes must be >= 2, meanDegree >= 1")
 	}
-	for i := 0; i < numNodes; i++ {
+	for i := range numNodes {
 		lat := 49.4 + rnd.Float64()*0.01
 		lon := 9.7 + rnd.Float64()*0.01
 		na.SetNode(i, lat, lon, math.NaN())
 	}
 	totalNumEdges := int(0.5 * meanDegree * float64(numNodes))
-	for numEdges := 0; numEdges < totalNumEdges; numEdges++ {
+	for range totalNumEdges {
 		var from, to int
 		for {
 			from = rnd.Intn(numNodes)
@@ -106,7 +106,7 @@ func AddRandomTurnCosts(numNodes int, rnd *rand.Rand, inExplorer, outExplorer Ed
 		pEdgePairHasTurnCosts = 0.6
 		pCostIsRestriction    = 0.1
 	)
-	for node := 0; node < numNodes; node++ {
+	for node := range numNodes {
 		if rnd.Float64() >= pNodeHasTurnCosts {
 			continue
 		}

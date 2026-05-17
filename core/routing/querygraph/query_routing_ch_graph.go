@@ -3,6 +3,7 @@ package querygraph
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
@@ -246,12 +247,7 @@ func (g *QueryRoutingCHGraph) isVirtualEdge(edge int) bool {
 }
 
 func containsInt(s []int, target int) bool {
-	for _, v := range s {
-		if v == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, target)
 }
 
 // virtualCHEdgeExplorer routes setBaseNode calls either to the wrapped CH
