@@ -78,7 +78,16 @@ func (b *queryOverlayBuilder) buildVirtualEdges(snaps []*index.Snap) {
 		edge2res[edgeID] = append(edge2res[edgeID], snap)
 	}
 
-	for _, results := range edge2res {
+	// Iterate edges in deterministic (ascending edge-id) order so that virtual
+	// node IDs and virtual edge IDs match Java HashMap<Integer> bucket order
+	// (which for small int keys is effectively sorted).
+	edgeIDs := make([]int, 0, len(edge2res))
+	for k := range edge2res {
+		edgeIDs = append(edgeIDs, k)
+	}
+	sort.Ints(edgeIDs)
+	for _, edgeID := range edgeIDs {
+		results := edge2res[edgeID]
 		closestEdge := results[0].GetClosestEdge()
 		fullPL := closestEdge.FetchWayGeometry(util.FetchModeAll)
 		baseNode := closestEdge.GetBaseNode()
