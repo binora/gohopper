@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gohopper/core/routing"
+	"gohopper/core/routing/querygraph"
 	"gohopper/core/storage"
 	webapi "gohopper/web-api"
 )
@@ -28,6 +29,13 @@ type chAlgoWithPathExtractor interface {
 
 func NewCHRoutingAlgorithmFactory(routingCHGraph storage.RoutingCHGraph) *CHRoutingAlgorithmFactory {
 	return &CHRoutingAlgorithmFactory{routingCHGraph: routingCHGraph}
+}
+
+// NewCHRoutingAlgorithmFactoryWithQueryGraph wraps the supplied RoutingCHGraph
+// with the supplied QueryGraph through QueryRoutingCHGraph, allowing routing
+// algorithms to traverse virtual nodes/edges introduced by snapped query points.
+func NewCHRoutingAlgorithmFactoryWithQueryGraph(routingCHGraph storage.RoutingCHGraph, queryGraph *querygraph.QueryGraph) *CHRoutingAlgorithmFactory {
+	return &CHRoutingAlgorithmFactory{routingCHGraph: querygraph.NewQueryRoutingCHGraph(routingCHGraph, queryGraph)}
 }
 
 func (f *CHRoutingAlgorithmFactory) CreateAlgo(opts webapi.PMap) routing.EdgeToEdgeRoutingAlgorithm {

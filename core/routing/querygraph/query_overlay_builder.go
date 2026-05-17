@@ -78,9 +78,11 @@ func (b *queryOverlayBuilder) buildVirtualEdges(snaps []*index.Snap) {
 		edge2res[edgeID] = append(edge2res[edgeID], snap)
 	}
 
-	// Iterate edges in deterministic (ascending edge-id) order so that virtual
-	// node IDs and virtual edge IDs match Java HashMap<Integer> bucket order
-	// (which for small int keys is effectively sorted).
+	// Iterate edges in deterministic (ascending edge-id) order. Java uses
+	// hppc.IntObjectHashMap whose iteration starts at a (non-deterministic)
+	// global-seed offset; Java tests that rely on specific virtual-node IDs
+	// are therefore inherently order-sensitive. We pick a stable order so the
+	// Go behavior is reproducible.
 	edgeIDs := make([]int, 0, len(edge2res))
 	for k := range edge2res {
 		edgeIDs = append(edgeIDs, k)

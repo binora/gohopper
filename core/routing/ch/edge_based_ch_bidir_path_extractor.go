@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gohopper/core/routing"
+	"gohopper/core/routing/querygraph"
 	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
 	"gohopper/core/util"
@@ -24,6 +25,13 @@ func NewEdgeBasedCHBidirPathExtractor(routingGraph storage.RoutingCHGraph) *Edge
 	w, ok := routingGraph.GetWeighting().(weighting.Weighting)
 	if !ok {
 		panic(fmt.Sprintf("CH weighting %T does not implement weighting.Weighting", routingGraph.GetWeighting()))
+	}
+	// Matches Java EdgeBasedCHBidirPathExtractor: weighting = routingGraph
+	// .getBaseGraph().wrapWeighting(routingGraph.getWeighting()). For a plain
+	// BaseGraph wrapWeighting is identity, for a QueryGraph it wraps as
+	// QueryGraphWeighting so turn costs involving virtual edges are correct.
+	if qg, ok := routingGraph.GetBaseGraph().(*querygraph.QueryGraph); ok {
+		w = weighting.NewQueryGraphWeighting(qg.GetBaseGraph(), w, qg.GetClosestEdges())
 	}
 	extractor := &EdgeBasedCHBidirPathExtractor{
 		weighting: w,
