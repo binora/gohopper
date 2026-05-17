@@ -55,8 +55,10 @@ func (f *CHRoutingAlgorithmFactory) createAlgoNodeBased(opts webapi.PMap) routin
 			return f.withNodeBasedPathExtractor(routing.NewDijkstraBidirectionCH(f.routingCHGraph))
 		}
 		return f.withNodeBasedPathExtractor(routing.NewDijkstraBidirectionCHNoSOD(f.routingCHGraph))
-	case routing.AlgoAStarBi, routing.AlgoAltRoute:
-		panic(fmt.Sprintf("algorithm %q not yet supported for node-based Contraction Hierarchies", algoName))
+	case routing.AlgoAStarBi:
+		return f.withNodeBasedPathExtractor(routing.NewAStarBidirectionCH(f.routingCHGraph))
+	case routing.AlgoAltRoute:
+		panic(fmt.Sprintf("algorithm %q not yet supported for node-based Contraction Hierarchies (gohopper-alx)", algoName))
 	default:
 		panic(fmt.Sprintf("algorithm %q not supported for node-based Contraction Hierarchies", algoName))
 	}
@@ -78,7 +80,7 @@ func (f *CHRoutingAlgorithmFactory) createAlgoEdgeBased(opts webapi.PMap) routin
 	case routing.AlgoDijkstraBi:
 		return f.withEdgeBasedPathExtractor(routing.NewDijkstraBidirectionEdgeCHNoSOD(f.routingCHGraph))
 	case routing.AlgoAltRoute:
-		panic(fmt.Sprintf("algorithm %q not yet supported for edge-based Contraction Hierarchies", algoName))
+		panic(fmt.Sprintf("algorithm %q not yet supported for edge-based Contraction Hierarchies (gohopper-alx)", algoName))
 	default:
 		panic(fmt.Sprintf("algorithm %q not supported for edge-based Contraction Hierarchies", algoName))
 	}
