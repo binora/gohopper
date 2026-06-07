@@ -1441,6 +1441,72 @@ func TestPreparedCH_CalcTurnCostTime(t *testing.T) {
 	f.checkPath(t, []int{2, 1, 0, 4}, 3, 8, 2, 4, []int{2, 0, 1, 3, 4})
 }
 
+// TestPreparedCH_ZeroUTurnCostsAtBarrier_Issue2564 ports Java CHTurnCostTest L989.
+// With zero u-turn costs and a zero-distance barrier edge, contracting node 2 must still
+// create the 1-3 shortcut in both directions. Before GraphHopper issue #2564 was fixed,
+// the witness search accepted 1-2-3-4-3 and no path was found.
+func TestPreparedCH_ZeroUTurnCostsAtBarrier_Issue2564(t *testing.T) {
+	f := newPreparedCHTurnCostFixture()
+	// lvl: 0 3 2 4 5 1
+	//  nd: 0-1-2-3-4-5
+	f.graph.Edge(0, 1).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(1, 2).SetDistance(70.336).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(2, 3).SetDistance(100.161).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(3, 4).SetDistance(0).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(4, 5).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Freeze()
+
+	f.chConfig = f.chConfigs[1]
+	f.prepareCH(0, 5, 2, 1, 3, 4)
+	f.compareCHQueryWithDijkstra(t, 0, 5)
+}
+
+// TestPreparedCH_BestFwdBwdEntryUpdate ports Java CHTurnCostTest L1009.
+func TestPreparedCH_BestFwdBwdEntryUpdate(t *testing.T) {
+	f := newPreparedCHTurnCostFixture()
+	// 2-3
+	// | |
+	// 0-4-1
+	f.graph.Edge(2, 0).SetDistance(8000.22).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(3, 4).SetDistance(4780.84).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(0, 4).SetDistance(5470.08).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(4, 1).SetDistance(2880.95).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Edge(2, 3).SetDistance(900).SetDecimalBothDir(f.speedEnc, 10, 10)
+	f.graph.Freeze()
+
+	f.prepareCH(1, 3, 0, 2, 4)
+	f.compareCHQueryWithDijkstra(t, 1, 2)
+}
+
+// TestPreparedCH_EdgeKeyBug ports Java CHTurnCostTest L1024.
+func TestPreparedCH_EdgeKeyBug(t *testing.T) {
+	f := newPreparedCHTurnCostFixture()
+	// 1 - 2 - 0 - 4
+	//          \ /
+	//           3
+	f.graph.Edge(0, 3).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10) // edgeId=0
+	f.graph.Edge(4, 3).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10) // edgeId=1
+	f.graph.Edge(0, 4).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10) // edgeId=2
+	f.graph.Edge(1, 2).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10) // edgeId=3
+	f.graph.Edge(0, 2).SetDistance(1000).SetDecimalBothDir(f.speedEnc, 10, 10) // edgeId=4
+	f.graph.Freeze()
+
+	f.prepareCH(2, 0, 1, 3, 4)
+	require.Equal(t, 2, f.chGraph.GetShortcuts())
+
+	chEdge := f.chGraph.GetEdgeIteratorState(6, 4)
+	assert.Equal(t, 3, chEdge.GetBaseNode())
+	assert.Equal(t, 4, chEdge.GetAdjNode())
+	assert.Equal(t, 2, chEdge.GetSkippedEdge1())
+	assert.Equal(t, 0, chEdge.GetSkippedEdge2())
+	// The first edge is 4-0 (edge 2 against storage direction), so its key is 2*2+1.
+	assert.Equal(t, 5, chEdge.GetOrigEdgeKeyFirst())
+	// The second edge is 0-3 (edge 0 in storage direction), so its key is 2*0.
+	assert.Equal(t, 0, chEdge.GetOrigEdgeKeyLast())
+
+	f.compareCHQueryWithDijkstra(t, 1, 3)
+}
+
 // --- Phase 2: random-contraction-order cases ported from CHTurnCostTest ---
 
 // shuffleIota returns a permutation of [0, n) seeded deterministically.

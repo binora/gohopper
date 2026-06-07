@@ -55,11 +55,11 @@ type EdgeBasedWitnessPathSearcher struct {
 	numPolls   int
 	numUpdates int
 
-	weights                  []float64
-	parents                  []int
+	weights                    []float64
+	parents                    []int
 	adjNodesAndIsPathToCenters []int
-	changedEdgeKeys          []int
-	dijkstraHeap             *IntFloatBinaryHeap
+	changedEdgeKeys            []int
+	dijkstraHeap               *IntFloatBinaryHeap
 
 	stats *EdgeBasedWitnessPathSearcherStats
 }
@@ -114,13 +114,14 @@ func (s *EdgeBasedWitnessPathSearcher) RunSearch(targetNode, targetEdgeKey int, 
 		currKey := s.dijkstraHeap.Poll()
 		s.numPolls++
 		currNode := s.getAdjNode(currKey)
+		currWeight := s.weights[currKey]
 		iter := s.outEdgeExplorer.SetBaseNode(currNode)
 		foundWeight := math.Inf(1)
 		for iter.Next() {
 			if currNode == s.sourceNode && iter.GetAdjNode() == s.sourceNode && iter.GetWeight() < maxZeroWeightLoop {
 				continue
 			}
-			weight := s.weights[currKey] + s.calcTurnWeight(currKey, currNode, iter.GetOrigEdgeKeyFirst()) + iter.GetWeight()
+			weight := currWeight + s.calcTurnWeight(currKey, currNode, iter.GetOrigEdgeKeyFirst()) + iter.GetWeight()
 			if math.IsInf(weight, 1) {
 				continue
 			}
