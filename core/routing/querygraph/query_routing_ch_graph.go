@@ -163,32 +163,8 @@ func (g *QueryRoutingCHGraph) buildVirtualEdgesAtRealNodes(explorer storage.Rout
 		iter := explorer.SetBaseNode(node)
 		for iter.Next() {
 			// shortcuts cannot be in the removed edge set because this was determined on the (base) query graph
-			if iter.IsShortcut() {
-				virtualEdges = append(virtualEdges, &virtualCHEdgeIteratorState{
-					edge:             iter.GetEdge(),
-					origEdge:         util.NoEdge,
-					baseNode:         iter.GetBaseNode(),
-					adjNode:          iter.GetAdjNode(),
-					origEdgeKeyFirst: iter.GetOrigEdgeKeyFirst(),
-					origEdgeKeyLast:  iter.GetOrigEdgeKeyLast(),
-					skippedEdge1:     iter.GetSkippedEdge1(),
-					skippedEdge2:     iter.GetSkippedEdge2(),
-					weightFwd:        iter.GetWeight(false),
-					weightBwd:        iter.GetWeight(true),
-				})
-			} else if !containsInt(changes.RemovedEdges, iter.GetOrigEdge()) {
-				virtualEdges = append(virtualEdges, &virtualCHEdgeIteratorState{
-					edge:             iter.GetEdge(),
-					origEdge:         iter.GetOrigEdge(),
-					baseNode:         iter.GetBaseNode(),
-					adjNode:          iter.GetAdjNode(),
-					origEdgeKeyFirst: iter.GetOrigEdgeKeyFirst(),
-					origEdgeKeyLast:  iter.GetOrigEdgeKeyLast(),
-					skippedEdge1:     util.NoEdge,
-					skippedEdge2:     util.NoEdge,
-					weightFwd:        iter.GetWeight(false),
-					weightBwd:        iter.GetWeight(true),
-				})
+			if iter.IsShortcut() || !slices.Contains(changes.RemovedEdges, iter.GetOrigEdge()) {
+				virtualEdges = append(virtualEdges, newVirtualCHEdgeIteratorState(iter))
 			}
 		}
 		result[node] = virtualEdges
@@ -246,10 +222,6 @@ func (g *QueryRoutingCHGraph) isVirtualEdge(edge int) bool {
 	return edge >= g.routingCHGraph.GetEdges()
 }
 
-func containsInt(s []int, target int) bool {
-	return slices.Contains(s, target)
-}
-
 // virtualCHEdgeExplorer routes setBaseNode calls either to the wrapped CH
 // explorer (for real nodes with no virtual changes) or to the precomputed
 // virtual-edge slices for real nodes touched by virtual edges and for virtual
@@ -288,6 +260,25 @@ type virtualCHEdgeIteratorState struct {
 	skippedEdge2     int
 	weightFwd        float64
 	weightBwd        float64
+}
+
+func newVirtualCHEdgeIteratorState(edge storage.RoutingCHEdgeIteratorState) *virtualCHEdgeIteratorState {
+	skippedEdge1, skippedEdge2 := util.NoEdge, util.NoEdge
+	if edge.IsShortcut() {
+		skippedEdge1, skippedEdge2 = edge.GetSkippedEdge1(), edge.GetSkippedEdge2()
+	}
+	return &virtualCHEdgeIteratorState{
+		edge:             edge.GetEdge(),
+		origEdge:         edge.GetOrigEdge(),
+		baseNode:         edge.GetBaseNode(),
+		adjNode:          edge.GetAdjNode(),
+		origEdgeKeyFirst: edge.GetOrigEdgeKeyFirst(),
+		origEdgeKeyLast:  edge.GetOrigEdgeKeyLast(),
+		skippedEdge1:     skippedEdge1,
+		skippedEdge2:     skippedEdge2,
+		weightFwd:        edge.GetWeight(false),
+		weightBwd:        edge.GetWeight(true),
+	}
 }
 
 func (s *virtualCHEdgeIteratorState) GetEdge() int             { return s.edge }
@@ -333,13 +324,15 @@ func (it *virtualCHEdgeIterator) current0() storage.RoutingCHEdgeIteratorState {
 	return it.edges[it.current]
 }
 
-func (it *virtualCHEdgeIterator) GetEdge() int             { return it.current0().GetEdge() }
-func (it *virtualCHEdgeIterator) GetOrigEdge() int         { return it.current0().GetOrigEdge() }
-func (it *virtualCHEdgeIterator) GetOrigEdgeKeyFirst() int { return it.current0().GetOrigEdgeKeyFirst() }
-func (it *virtualCHEdgeIterator) GetOrigEdgeKeyLast() int  { return it.current0().GetOrigEdgeKeyLast() }
-func (it *virtualCHEdgeIterator) GetBaseNode() int         { return it.current0().GetBaseNode() }
-func (it *virtualCHEdgeIterator) GetAdjNode() int          { return it.current0().GetAdjNode() }
-func (it *virtualCHEdgeIterator) IsShortcut() bool         { return it.current0().IsShortcut() }
+func (it *virtualCHEdgeIterator) GetEdge() int     { return it.current0().GetEdge() }
+func (it *virtualCHEdgeIterator) GetOrigEdge() int { return it.current0().GetOrigEdge() }
+func (it *virtualCHEdgeIterator) GetOrigEdgeKeyFirst() int {
+	return it.current0().GetOrigEdgeKeyFirst()
+}
+func (it *virtualCHEdgeIterator) GetOrigEdgeKeyLast() int { return it.current0().GetOrigEdgeKeyLast() }
+func (it *virtualCHEdgeIterator) GetBaseNode() int        { return it.current0().GetBaseNode() }
+func (it *virtualCHEdgeIterator) GetAdjNode() int         { return it.current0().GetAdjNode() }
+func (it *virtualCHEdgeIterator) IsShortcut() bool        { return it.current0().IsShortcut() }
 
 func (it *virtualCHEdgeIterator) GetSkippedEdge1() int {
 	if !it.IsShortcut() {

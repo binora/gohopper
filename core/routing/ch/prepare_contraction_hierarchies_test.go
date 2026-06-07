@@ -7,9 +7,11 @@ import (
 
 	"gohopper/core/routing"
 	"gohopper/core/routing/ev"
+	"gohopper/core/routing/querygraph"
 	routingutil "gohopper/core/routing/util"
 	"gohopper/core/routing/weighting"
 	"gohopper/core/storage"
+	"gohopper/core/storage/index"
 	"gohopper/core/util"
 
 	"github.com/stretchr/testify/assert"
@@ -160,6 +162,43 @@ func pchGetEdge(g *storage.BaseGraph, from, to int) util.EdgeIteratorState {
 		}
 	}
 	panic("edge not found")
+}
+
+func pchGetGraphEdge(g storage.Graph, from, to int) util.EdgeIteratorState {
+	iter := g.CreateEdgeExplorer(routingutil.AllEdges).SetBaseNode(from)
+	for iter.Next() {
+		if iter.GetAdjNode() == to {
+			return iter
+		}
+	}
+	panic("edge not found")
+}
+
+func pchGetCHEdge(g storage.RoutingCHGraph, from, to int, incoming bool) storage.RoutingCHEdgeIteratorState {
+	var iter storage.RoutingCHEdgeIterator
+	if incoming {
+		iter = g.CreateInEdgeExplorer().SetBaseNode(from)
+	} else {
+		iter = g.CreateOutEdgeExplorer().SetBaseNode(from)
+	}
+	for iter.Next() {
+		if iter.GetAdjNode() == to {
+			return iter
+		}
+	}
+	panic("CH edge not found")
+}
+
+func pchGetWeight(g storage.Graph, w weighting.Weighting, from, to int) float64 {
+	return w.CalcEdgeWeight(pchGetGraphEdge(g, from, to), false)
+}
+
+func pchUpdateDistancesFor(g *storage.BaseGraph, node int, lat, lon float64) {
+	g.GetNodeAccess().SetNode(node, lat, lon, math.NaN())
+	iter := g.CreateEdgeExplorer(routingutil.AllEdges).SetBaseNode(node)
+	for iter.Next() {
+		iter.SetDistance(util.DistEarth.CalcPointListDistance(iter.FetchWayGeometry(util.FetchModeAll)))
+	}
 }
 
 func pchCheckPath(t *testing.T, g *storage.BaseGraph, chConfig *CHConfig, expShortcuts int64, expDistance float64, expNodes []int, nodeOrdering []int) {
@@ -387,6 +426,66 @@ func TestPrepareContractionHierarchies_Disconnects(t *testing.T) {
 	assert.Equal(t, []int(nil), pchGetAdjs(inExplorer.SetBaseNode(8)))
 }
 
+func TestPrepareContractionHierarchies_StallOnDemandViaVirtualNodeIssue1574(t *testing.T) {
+	speedEnc := ev.NewDecimalEncodedValueImpl("speed", 5, 5, true)
+	g := pchCreateGraph(speedEnc)
+	w := weighting.NewSpeedWeighting(speedEnc)
+	chConfig := NewCHConfigNodeBased("c", w)
+
+	// This reproduces GraphHopper issue #1574: with stall-on-demand enabled,
+	// shortcut rounding and virtual-edge precision used to stall nodes 2 and 4
+	// such that node 5 was never discovered.
+	//
+	// start 0 - 3 - x - 1 - 2
+	//             \         |
+	//               sc ---- 4 - 5 - 6 - 7 finish
+	g.Edge(0, 3).SetDistance(1).SetDecimalBothDir(speedEnc, 60, 60)
+	edge31 := g.Edge(3, 1).SetDistance(1).SetDecimalBothDir(speedEnc, 60, 60)
+	g.Edge(1, 2).SetDistance(1).SetDecimalBothDir(speedEnc, 60, 60)
+	edge24 := g.Edge(2, 4).SetDistance(1).SetDecimalBothDir(speedEnc, 60, 60)
+	g.Edge(4, 5).SetDistance(1).SetDecimalBothDir(speedEnc, 60, 60)
+	g.Edge(5, 6).SetDistance(1).SetDecimalBothDir(speedEnc, 60, 60)
+	g.Edge(6, 7).SetDistance(1).SetDecimalBothDir(speedEnc, 60, 60)
+	pchUpdateDistancesFor(g, 0, 0.001, 0.0000)
+	pchUpdateDistancesFor(g, 3, 0.001, 0.0001)
+	pchUpdateDistancesFor(g, 1, 0.001, 0.0002)
+	pchUpdateDistancesFor(g, 2, 0.001, 0.0003)
+	pchUpdateDistancesFor(g, 4, 0.000, 0.0003)
+	pchUpdateDistancesFor(g, 5, 0.000, 0.0004)
+	pchUpdateDistancesFor(g, 6, 0.000, 0.0005)
+	pchUpdateDistancesFor(g, 7, 0.000, 0.0006)
+
+	edge31.SetDecimalBothDir(speedEnc, 12, 12)
+	edge24.SetDecimalBothDir(speedEnc, 27.5, 27.5)
+
+	prepare := pchCreatePrepare(g, chConfig)
+	result := prepare.UseFixedNodeOrdering(IdentityNodeOrdering(g.GetNodes())).DoWork()
+	routingCHGraph := storage.NewRoutingCHGraph(g, result.GetCHStorage(), chConfig.GetWeighting())
+	assert.Equal(t, 2, routingCHGraph.GetEdges()-g.GetEdges(), "there should be exactly two bidirectional shortcuts: 2-3 and 3-4")
+
+	snap := index.NewSnap(0.001, 0.00015)
+	snap.SetClosestEdge(edge31)
+	snap.SetSnappedPosition(index.Edge)
+	snap.SetClosestNode(8)
+	snap.SetWayIndex(0)
+	snap.CalcSnappedPoint(util.DistPlane)
+	queryGraph := querygraph.CreateFromSnaps(g, []*index.Snap{snap})
+
+	weight03 := pchGetWeight(queryGraph, w, 0, 3)
+	scWeight23 := weight03 + pchGetCHEdge(routingCHGraph, 2, 3, true).GetWeight(false)
+	scWeight34 := weight03 + pchGetCHEdge(routingCHGraph, 3, 4, false).GetWeight(false)
+	sptWeight2 := weight03 +
+		pchGetWeight(queryGraph, w, 3, 8) +
+		pchGetWeight(queryGraph, w, 8, 1) +
+		pchGetWeight(queryGraph, w, 1, 2)
+	sptWeight4 := sptWeight2 + pchGetWeight(queryGraph, w, 2, 4)
+	assert.Less(t, scWeight23, sptWeight2, "incoming shortcut weight 3->2 should be smaller than spt weight at node 2 so 2 gets stalled")
+	assert.Less(t, sptWeight4, scWeight34, "spt weight at node 4 should be smaller than shortcut weight 3->4 so node 4 gets stalled")
+
+	path := NewCHRoutingAlgorithmFactoryWithQueryGraph(routingCHGraph, queryGraph).CreateAlgo(nil).CalcPath(0, 7)
+	assert.Equal(t, []int{0, 3, 8, 1, 2, 4, 5, 6, 7}, path.CalcNodes(), "wrong or no path found")
+}
+
 func TestPrepareContractionHierarchies_MultiplePreparationsIdenticalView(t *testing.T) {
 	carSpeedEnc := ev.NewDecimalEncodedValueImpl("car_speed", 5, 5, true)
 	bikeSpeedEnc := ev.NewDecimalEncodedValueImpl("bike_speed", 4, 2, true)
@@ -491,6 +590,3 @@ func TestPrepareContractionHierarchies_ReusingNodeOrdering(t *testing.T) {
 		assert.InDelta(t, dijkstraWeight, chWeight, 1e-1)
 	}
 }
-
-// TODO: port these tests when CH routing algorithm is available:
-// - TestPrepareContractionHierarchies_StallOnDemandViaVirtualNode
